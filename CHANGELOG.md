@@ -5,6 +5,70 @@
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
+## [0.2.0-alpha] - 2026-04-27
+
+### 新增 (Added)
+
+#### C++ Sidecar - 符号提取服务（SymbolService）
+- 实现 `SymbolService` 类（~600 行 C++）：
+  - `extractSymbols()` — 从语法树提取所有符号定义
+  - `extractSymbolsFromTree()` — 从已解析语法树提取符号
+  - `findDefinition()` — 根据光标位置查找符号定义（支持多定义候选）
+  - `findReferences()` — 在项目范围内查找符号的所有引用
+  - `resolveOverloads()` — 函数重载消解
+  - `indexProject()` — 批量索引项目所有源文件
+  - `clearIndex()` / `getSymbolCount()` / `getIndexedFiles()` — 索引管理
+- 支持 13 种符号类型：Function, Method, Constructor, Destructor, Class, Struct, Variable, Field, Enum, EnumMember, Namespace, TypeAlias, Macro
+- 实现内存符号表（name → entries 映射，支持重载）
+- 实现文件缓存（语法树 + 源代码内容）
+- 实现项目源文件扫描（支持 .cpp/.h/.c/.hpp/.cxx/.cc 等扩展名）
+- 实现限定名生成（如 `utils::MathHelper::add`）
+
+#### JSON-RPC 接口
+- 新增 `textDocument/definition` — 符号跳转（Go to Definition）
+- 新增 `textDocument/references` — 引用查找（Find All References）
+- 新增 `symbol/index` — 构建项目符号索引
+- 新增 `symbol/extract` — 提取单文件符号列表
+
+#### Tauri 后端
+- 新增 `sidecar_goto_definition` 命令 — F12/Ctrl+Click 跳转定义
+- 新增 `sidecar_find_references` 命令 — Shift+F12 查找引用
+- 新增 `sidecar_index_project` 命令 — 索引项目符号
+- 新增 `sidecar_extract_symbols` 命令 — 提取文件符号
+- 重构 Sidecar 通信为通用 `send_sidecar_request()` 函数
+- 服务端版本号升级到 v0.3.0
+
+#### 前端
+- 新增 `ReferencesPanel` 组件 — 引用查找结果面板：
+  - 按文件分组显示引用
+  - 区分定义位置（DEF 标记 + 蓝色边框）
+  - 显示引用所在行上下文代码
+  - 支持点击跳转
+  - Escape 键关闭
+- 重写 `Editor.tsx`，集成代码导航功能：
+  - 注册 Monaco `DefinitionProvider`（F12 / Ctrl+Click 跳转定义）
+  - 注册 Monaco `ReferenceProvider`（Shift+F12 查找引用）
+  - 通过 Tauri IPC 调用 Sidecar 获取定义和引用数据
+- 更新 `index.tsx`：
+  - 集成引用面板（浮动弹出）
+  - 新增 `handleGoToDefinition` 回调（跨文件跳转）
+  - 新增 `handleJumpToRef` 回调（引用面板点击跳转）
+  - 状态栏版本号更新到 v0.3.0
+- 新增 TypeScript 全局 Window 类型声明
+
+#### 测试
+- 新增 `test_symbol.cpp` 单元测试（7 个测试用例）
+- 新增测试数据：`test_header.h`（命名空间+类+枚举）和 `test_source.cpp`（函数定义+引用）
+- 新增阶段3测试报告 `docs/TEST_REPORT_PHASE3.md`（21 个测试项）
+
+### 变更 (Changed)
+- `symbol.h` — 从占位声明升级为完整 Tree-sitter 符号提取接口
+- `symbol.cpp` — 从 "Not implemented" 升级为完整实现（~600 行）
+- `main.cpp` — 从 9 个方法扩展为 13 个方法
+- `lib.rs` — 从 6 个命令扩展为 10 个命令，重构 Sidecar 通信
+- `Editor.tsx` — 新增 DefinitionProvider + ReferenceProvider
+- `index.tsx` — 新增引用面板集成和跨文件跳转
+
 ## [0.1.0-alpha] - 2026-04-27
 
 ### 新增 (Added)
