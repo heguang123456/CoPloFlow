@@ -1,0 +1,60 @@
+# ========================
+# CodeLens 代码阅读器 .gitignore
+# ========================
+
+# --- 构建产物 ---
+build/
+out/
+dist/
+target/
+
+# --- Node.js / 前端 ---
+node_modules/
+frontend/node_modules/
+.next/
+frontend/.next/
+*.tsbuildinfo
+
+# --- C++ Sidecar ---
+sidecar/build/
+sidecar/out/
+sidecar/cmake-build-*/
+*.obj
+*.o
+*.exe
+*.dll
+*.lib
+*.pdb
+*.exp
+*.ilk
+
+# --- Tauri ---
+src-tauri/target/
+src-tauri/WixTools/
+
+# --- CodeLens 数据目录 ---
+.codelens/
+data/symbols.db
+
+# --- IDE / 编辑器 ---
+.vs/
+.vscode/
+*.swp
+*.swo
+*~
+.idea/
+*.sln
+*.vcxproj*
+
+# --- 操作系统 ---
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# --- 工具配置 ---
+.workbuddy/
+
+# --- 日志与临时文件 ---
+*.log
+*.tmp
+*.temp

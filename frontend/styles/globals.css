@@ -1,0 +1,337 @@
+/* ============================
+   CodeLens 代码阅读器 - 全局样式
+   ============================ */
+
+/* --- CSS 变量（深色主题） --- */
+:root {
+  --bg-primary: #1e1e1e;
+  --bg-secondary: #252526;
+  --bg-active: #2d2d30;
+  --bg-hover: #2a2d2e;
+  --text-primary: #d4d4d4;
+  --text-secondary: #858585;
+  --text-muted: #6a6a6a;
+  --border-color: #3c3c3c;
+  --accent-color: #007acc;
+  --accent-hover: #1a8ad4;
+  --scrollbar-bg: #1e1e1e;
+  --scrollbar-thumb: #424242;
+  --statusbar-bg: #007acc;
+  --tab-active-bg: #1e1e1e;
+  --tab-inactive-bg: #2d2d30;
+}
+
+/* --- 基础重置 --- */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body {
+  height: 100%;
+  overflow: hidden;
+  font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: 13px;
+  color: var(--text-primary);
+  background: var(--bg-primary);
+}
+
+/* --- 滚动条 --- */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--scrollbar-bg);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #555;
+}
+
+/* --- 应用容器 --- */
+.app-container {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  width: 100vw;
+}
+
+/* --- 菜单栏 --- */
+.menu-bar {
+  display: flex;
+  align-items: center;
+  height: 30px;
+  padding: 0 8px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-color);
+  user-select: none;
+  -webkit-app-region: drag;
+}
+
+.menu-item {
+  padding: 2px 8px;
+  font-size: 12px;
+  color: var(--text-primary);
+  cursor: pointer;
+  border-radius: 3px;
+  -webkit-app-region: no-drag;
+}
+
+.menu-item:hover {
+  background: var(--bg-hover);
+}
+
+/* --- 主内容区 --- */
+.main-content {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* --- 侧边栏（左） --- */
+.sidebar-left {
+  width: 240px;
+  min-width: 180px;
+  background: var(--bg-secondary);
+  border-right: 1px solid var(--border-color);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  resize: horizontal;
+}
+
+/* --- 编辑器区域 --- */
+.editor-area {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-primary);
+}
+
+/* --- 侧边栏（右） --- */
+.sidebar-right {
+  width: 200px;
+  min-width: 150px;
+  background: var(--bg-secondary);
+  border-left: 1px solid var(--border-color);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  resize: horizontal;
+}
+
+/* --- 状态栏 --- */
+.status-bar {
+  display: flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 8px;
+  background: var(--statusbar-bg);
+  color: #fff;
+  font-size: 11px;
+  user-select: none;
+}
+
+.status-item {
+  padding: 0 8px;
+  border-right: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.status-item:last-child {
+  border-right: none;
+  margin-left: auto;
+}
+
+/* --- 文件树 --- */
+.file-tree {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.file-tree-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.file-tree-content {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.file-tree-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: 12px;
+  color: var(--text-secondary);
+}
+
+.tree-node {
+  display: flex;
+  align-items: center;
+  padding: 3px 8px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.tree-node:hover {
+  background: var(--bg-hover);
+}
+
+.tree-icon {
+  margin-right: 6px;
+  font-size: 12px;
+}
+
+.tree-title {
+  font-size: 13px;
+}
+
+/* --- 编辑器 --- */
+.editor-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.editor-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: var(--tab-active-bg);
+  border-bottom: 1px solid var(--border-color);
+  font-size: 13px;
+}
+
+.tab-icon {
+  font-size: 12px;
+}
+
+.monaco-editor {
+  flex: 1;
+  min-height: 0;
+}
+
+/* --- 符号大纲 --- */
+.symbol-outline {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.symbol-outline-header {
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.symbol-outline-content {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.outline-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--text-secondary);
+  text-align: center;
+  padding: 16px;
+  gap: 8px;
+}
+
+.text-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.outline-list {
+  list-style: none;
+  padding: 4px 0;
+}
+
+.outline-item {
+  display: flex;
+  align-items: center;
+  padding: 3px 12px;
+  cursor: pointer;
+  gap: 6px;
+}
+
+.outline-item:hover {
+  background: var(--bg-hover);
+}
+
+.outline-icon {
+  font-size: 11px;
+  color: var(--accent-color);
+  width: 16px;
+  text-align: center;
+}
+
+.outline-name {
+  flex: 1;
+  font-size: 13px;
+}
+
+.outline-line {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* --- 按钮 --- */
+.btn-icon {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 3px;
+  font-size: 14px;
+}
+
+.btn-icon:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.btn-primary {
+  background: var(--accent-color);
+  color: #fff;
+  border: none;
+  padding: 6px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.btn-primary:hover {
+  background: var(--accent-hover);
+}

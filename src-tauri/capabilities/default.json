@@ -1,0 +1,19 @@
+{
+  "$schema": "https://raw.githubusercontent.com/nicehash/Tauri/v2/core/tauri-config-schema/schema.json",
+  "identifier": "default",
+  "description": "CodeLens 默认权限配置",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "opener:default",
+    "dialog:default",
+    "dialog:allow-open",
+    "dialog:allow-save",
+    "dialog:allow-message",
+    "dialog:allow-ask",
+    "dialog:allow-confirm",
+    "core:window:default",
+    "core:window:allow-create",
+    "core:window:allow-set-title"
+  ]
+}
