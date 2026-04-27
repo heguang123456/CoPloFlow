@@ -4,20 +4,19 @@
  *
  * 启动 JSON-RPC 2.0 消息循环，通过 stdin/stdout 与 Tauri 主进程通信。
  *
- * 当前阶段：
- * - 注册基础方法（initialize, shutdown, ping）
- * - 验证 JSON-RPC 通信通道可用性
- *
- * 后续阶段将注册：
- * - textDocument/highlight   → 代码高亮
- * - textDocument/definition  → 符号跳转
- * - textDocument/references  → 引用查找
- * - textDocument/outline     → 符号大纲
- * - workspace/symbol         → 项目符号搜索
- * - workspace/index          → 构建项目索引
+ * 已注册方法：
+ * - initialize                     初始化握手
+ * - shutdown                        关闭服务
+ * - ping                            心跳检测
+ * - parser/listLanguages            获取支持的语言列表
+ * - parser/parse                    解析文件（全量）
+ * - parser/update                   增量更新解析
+ * - parser/dispose                  释放语法树缓存
+ * - textDocument/highlight          获取高亮数据（便捷接口）
  */
 
 #include "json_rpc.h"
+#include "parser.h"
 
 #include <iostream>
 #include <csignal>
@@ -25,9 +24,13 @@
 
 using json = nlohmann::json;
 namespace rpc = codelens::rpc;
+namespace parser = codelens::parser;
 
 /// 全局服务器实例（用于信号处理）
 static rpc::JsonRpcServer* g_server = nullptr;
+
+/// 全局解析器服务
+static parser::ParserService* g_parser = nullptr;
 
 /// 信号处理（Ctrl+C 优雅退出）
 void signalHandler(int signum) {
@@ -36,10 +39,29 @@ void signalHandler(int signum) {
     }
 }
 
+/// 将 HighlightRange 列表转换为 JSON 数组
+static json highlightRangesToJson(const std::vector<parser::HighlightRange>& ranges) {
+    json arr = json::array();
+    for (const auto& r : ranges) {
+        arr.push_back({
+            {"startLine", r.start_line},
+            {"startCol", r.start_col},
+            {"endLine", r.end_line},
+            {"endCol", r.end_col},
+            {"scope", r.scope},
+        });
+    }
+    return arr;
+}
+
 int main() {
     // 注册信号处理
     std::signal(SIGINT, signalHandler);
     std::signal(SIGTERM, signalHandler);
+
+    // 初始化解析器服务
+    parser::ParserService parserService;
+    g_parser = &parserService;
 
     rpc::JsonRpcServer server;
     g_server = &server;
@@ -47,37 +69,191 @@ int main() {
     // --- 注册基础方法 ---
 
     // 初始化握手
-    server.registerMethod("initialize", [](const json& params) -> json {
+    server.registerMethod("initialize", [](const json& /*params*/) -> json {
         return {
             {"capabilities", {
-                {"textDocumentSync", 1},  // 全量同步
-                {"definitionProvider", true},
-                {"referencesProvider", true},
-                {"documentSymbolProvider", true},
-                {"workspaceSymbolProvider", true},
+                {"textDocumentSync", 1},
+                {"definitionProvider", false},       // 阶段3
+                {"referencesProvider", false},       // 阶段3
+                {"documentSymbolProvider", false},   // 阶段4
+                {"workspaceSymbolProvider", false},   // 阶段4
+                {"highlightProvider", true},          // ✅ 阶段2
             }},
             {"serverInfo", {
                 {"name", "codelens-sidecar"},
-                {"version", "0.1.0"},
+                {"version", "0.2.0"},
             }},
         };
     });
 
     // 关闭
     server.registerMethod("shutdown", [](const json& /*params*/) -> json {
+        if (g_parser) {
+            g_parser->disposeAll();
+        }
         return nullptr;
     });
 
     // 心跳检测
     server.registerMethod("ping", [](const json& /*params*/) -> json {
-        return {{"status", "ok"}};
+        return {{"status", "ok"}, {"timestamp", 0}};
+    });
+
+    // --- 解析器方法 ---
+
+    // 获取支持的语言列表
+    server.registerMethod("parser/listLanguages", [&parserService](const json& /*params*/) -> json {
+        auto langs = parserService.getSupportedLanguages();
+        json arr = json::array();
+        for (const auto& lang : langs) {
+            arr.push_back(lang);
+        }
+        return {{"languages", arr}};
+    });
+
+    // 全量解析文件
+    server.registerMethod("parser/parse", [&parserService](const json& params) -> json {
+        std::string filepath = params.value("filepath", "");
+        if (filepath.empty()) {
+            throw std::runtime_error("Missing required parameter: filepath");
+        }
+
+        auto result = parserService.parseFile(filepath);
+
+        if (!result.success()) {
+            return {
+                {"success", false},
+                {"error", result.error_message},
+                {"ranges", json::array()},
+            };
+        }
+
+        return {
+            {"success", true},
+            {"filepath", filepath},
+            {"ranges", highlightRangesToJson(result.highlight_ranges)},
+        };
+    });
+
+    // 解析文件内容（内存中的字符串）
+    server.registerMethod("parser/parseContent", [&parserService](const json& params) -> json {
+        std::string content = params.value("content", "");
+        std::string language = params.value("language", "cpp");
+        std::string cacheKey = params.value("cacheKey", "");
+
+        if (content.empty()) {
+            throw std::runtime_error("Missing required parameter: content");
+        }
+
+        auto result = parserService.parseContent(content, language, cacheKey);
+
+        if (!result.success()) {
+            return {
+                {"success", false},
+                {"error", result.error_message},
+                {"ranges", json::array()},
+            };
+        }
+
+        return {
+            {"success", true},
+            {"cacheKey", cacheKey},
+            {"ranges", highlightRangesToJson(result.highlight_ranges)},
+        };
+    });
+
+    // 增量更新
+    server.registerMethod("parser/update", [&parserService](const json& params) -> json {
+        std::string filepath = params.value("filepath", "");
+        std::string oldContent = params.value("oldContent", "");
+        std::string newContent = params.value("newContent", "");
+
+        if (filepath.empty() || newContent.empty()) {
+            throw std::runtime_error("Missing required parameters: filepath, newContent");
+        }
+
+        auto result = parserService.updateFile(filepath, oldContent, newContent);
+
+        if (!result.success()) {
+            return {
+                {"success", false},
+                {"error", result.error_message},
+                {"ranges", json::array()},
+            };
+        }
+
+        return {
+            {"success", true},
+            {"filepath", filepath},
+            {"ranges", highlightRangesToJson(result.highlight_ranges)},
+        };
+    });
+
+    // 释放语法树缓存
+    server.registerMethod("parser/dispose", [&parserService](const json& params) -> json {
+        std::string filepath = params.value("filepath", "");
+        if (!filepath.empty()) {
+            parserService.disposeTree(filepath);
+        }
+        return {{"success", true}};
+    });
+
+    // --- 便捷方法（LSP 风格） ---
+
+    // 获取高亮数据（等价于 parser/parse + 返回 ranges）
+    server.registerMethod("textDocument/highlight", [&parserService](const json& params) -> json {
+        // 支持两种调用方式：
+        // 1. { "filepath": "..." }  — 直接解析文件
+        // 2. { "content": "...", "language": "cpp" } — 解析字符串
+
+        std::string filepath = params.value("filepath", "");
+        std::string content = params.value("content", "");
+        std::string language = params.value("language", "cpp");
+
+        parser::ParseResult result;
+
+        if (!filepath.empty()) {
+            result = parserService.parseFile(filepath);
+        } else if (!content.empty()) {
+            result = parserService.parseContent(content, language, "__inline__");
+        } else {
+            return {
+                {"success", false},
+                {"error", "Missing required parameter: filepath or content"},
+                {"ranges", json::array()},
+            };
+        }
+
+        if (!result.success()) {
+            return {
+                {"success", false},
+                {"error", result.error_message},
+                {"ranges", json::array()},
+            };
+        }
+
+        return {
+            {"success", true},
+            {"ranges", highlightRangesToJson(result.highlight_ranges)},
+        };
     });
 
     // 启动消息循环
-    std::cerr << "[CodeLens Sidecar] JSON-RPC 2.0 server started" << std::endl;
+    std::cerr << "[CodeLens Sidecar] JSON-RPC 2.0 server started (v0.2.0)" << std::endl;
+    std::cerr << "[CodeLens Sidecar] Supported languages: ";
+    for (const auto& lang : parserService.getSupportedLanguages()) {
+        std::cerr << lang << " ";
+    }
+    std::cerr << std::endl;
+
     server.run();
+
     std::cerr << "[CodeLens Sidecar] Server stopped" << std::endl;
 
+    // 清理
+    parserService.disposeAll();
+    g_parser = nullptr;
     g_server = nullptr;
+
     return 0;
 }
