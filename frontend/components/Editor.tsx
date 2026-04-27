@@ -2,6 +2,14 @@ import { useEffect, useRef, useCallback } from 'react';
 import Editor, { OnMount } from '@monaco-editor/react';
 import type { editor as MonacoEditor } from 'monaco-editor';
 
+// 扩展 Window 类型声明
+declare global {
+  interface Window {
+    __CODELENS_CURRENT_FILE__?: string;
+    __MONACO_EDITOR__?: any;
+  }
+}
+
 /**
  * Monaco Editor 组件属性
  */
@@ -10,6 +18,8 @@ interface EditorProps {
   content: string;
   language: string;
   onCursorMove?: (line: number, col: number) => void;
+  onGoToDefinition?: (targetFilePath: string, line: number, col: number) => void;
+  onFindReferences?: (symbolName: string, line: number, col: number) => void;
 }
 
 /**
@@ -47,11 +57,8 @@ const SCOPE_TO_TOKEN: Record<string, string[]> = {
  * CodeLens 自定义语义高亮语言定义
  */
 function registerCodelensLanguage(monaco: any) {
-  // 注册 codelens-cpp 语言（基于 cpp，但使用我们自己的 tokenizer）
   monaco.languages.register({ id: 'codelens-cpp' });
 
-  // 默认使用 cpp 的内置 tokenizer 作为基础
-  // 当 Tree-sitter 高亮数据到达后，通过 decorations 叠加语义层
   monaco.languages.setMonarchTokensProvider('codelens-cpp', {
     defaultToken: '',
     tokenPostfix: '.cpp',
@@ -88,19 +95,12 @@ function registerCodelensLanguage(monaco: any) {
 
     tokenizer: {
       root: [
-        // 预处理器指令
         [/^\s*#\s*(include|define|undef|ifdef|ifndef|if|else|elif|endif|pragma)\b/, 'keyword.preprocessor'],
-
-        // 字符串字面量
         [/"/, 'string', '@string_double'],
         [/'/, 'string', '@string_char'],
-
-        // 数字
         [/\d*\.\d+([eE][\-+]?\d+)?[fFdDmM]?/, 'number.float'],
         [/0[xX][0-9a-fA-F]+[uUlL]*/, 'number.hex'],
         [/\d+[uUlL]*/, 'number'],
-
-        // 标识符和关键字
         [/[a-zA-Z_]\w*/, {
           cases: {
             '@typeKeywords': 'keyword.type',
@@ -108,12 +108,8 @@ function registerCodelensLanguage(monaco: any) {
             '@default': 'identifier',
           },
         }],
-
-        // 注释
         [/\/\/.*$/, 'comment'],
         [/\/\*/, 'comment', '@comment'],
-
-        // 运算符
         [/@symbols/, {
           cases: {
             '@operatorKeywords': 'operator.keyword',
@@ -121,26 +117,99 @@ function registerCodelensLanguage(monaco: any) {
           },
         }],
       ],
-
       string_double: [
         [/[^\\"]+/, 'string'],
         [/@escapes/, 'string.escape'],
         [/\\./, 'string.escape.invalid'],
         [/"/, 'string', '@pop'],
       ],
-
       string_char: [
         [/[^\\']+/, 'string'],
         [/@escapes/, 'string.escape'],
         [/\\./, 'string.escape.invalid'],
         [/'/, 'string', '@pop'],
       ],
-
       comment: [
         [/[^\/*]+/, 'comment'],
         [/\*\//, 'comment', '@pop'],
         [/[\/*]/, 'comment'],
       ],
+    },
+  });
+
+  // 注册定义 Provider（F12 / Ctrl+Click）
+  monaco.languages.registerDefinitionProvider('codelens-cpp', {
+    provideDefinition: async (model: any, position: any) => {
+      try {
+        const { invoke } = await import('@tauri-apps/api/core');
+        const result = await invoke<any>('sidecar_goto_definition', {
+          filepath: window.__CODELENS_CURRENT_FILE__ || '',
+          line: position.lineNumber - 1,  // Monaco 1-based → 0-based
+          col: position.column - 1,
+        });
+
+        if (result && result.success) {
+          if (result.single && result.definition) {
+            const def = result.definition;
+            const filePath = def.uri.replace('file:///', '').replace(/\//g, '\\');
+            return [{
+              uri: monaco.Uri.file(filePath),
+              range: new monaco.Range(
+                def.range.start.line + 1,
+                def.range.start.character + 1,
+                def.range.end.line + 1,
+                def.range.end.character + 1,
+              ),
+            }];
+          } else if (result.candidates && result.candidates.length > 0) {
+            // 多定义候选
+            return result.candidates.map((c: any) => ({
+              uri: monaco.Uri.file(c.uri.replace('file:///', '').replace(/\//g, '\\')),
+              range: new monaco.Range(
+                c.range.start.line + 1,
+                c.range.start.character + 1,
+                c.range.end.line + 1,
+                c.range.end.character + 1,
+              ),
+            }));
+          }
+        }
+      } catch (err) {
+        console.log('[CodeLens] Definition provider error:', err);
+      }
+      return null;
+    },
+  });
+
+  // 注册引用 Provider（Shift+F12）
+  monaco.languages.registerReferenceProvider('codelens-cpp', {
+    provideReferences: async (model: any, position: any) => {
+      try {
+        const { invoke } = await import('@tauri-apps/api/core');
+        const word = model.getWordAtPosition(position);
+        const symbolName = word?.word || '';
+
+        if (!symbolName) return [];
+
+        const result = await invoke<any>('sidecar_find_references', {
+          symbolName: symbolName,
+        });
+
+        if (result && result.success && Array.isArray(result.references)) {
+          return result.references.map((ref: any) => ({
+            uri: monaco.Uri.file(ref.filePath),
+            range: new monaco.Range(
+              ref.startLine + 1,
+              ref.startCol + 1,
+              ref.endLine + 1,
+              ref.endCol + 1,
+            ),
+          }));
+        }
+      } catch (err) {
+        console.log('[CodeLens] Reference provider error:', err);
+      }
+      return [];
     },
   });
 }
@@ -152,7 +221,6 @@ function highlightRangesToDecorations(
   ranges: HighlightRange[],
   monaco: any
 ): MonacoEditor.IModelDeltaDecoration[] {
-  // scope → Monaco 主题色 class 映射
   const classMap: Record<string, string> = {
     'keyword.control': 'codelens-keyword',
     'keyword.declaration.type': 'codelens-keyword-type',
@@ -174,7 +242,7 @@ function highlightRangesToDecorations(
 
     return {
       range: new monaco.Range(
-        range.startLine + 1,  // Monaco 是 1-based
+        range.startLine + 1,
         range.startCol + 1,
         range.endLine + 1,
         range.endCol + 1
@@ -187,19 +255,30 @@ function highlightRangesToDecorations(
 }
 
 /**
- * Monaco Editor 组件（F-001）
+ * Monaco Editor 组件（F-001 + F-002 + F-003）
  *
- * 阶段2新增：
- * - 注册 codelens-cpp 自定义语言
- * - 通过 Tauri IPC 调用 Sidecar 获取 Tree-sitter 语义高亮数据
- * - 将语义高亮区间叠加为 Monaco Decorations
- * - 降级策略：Sidecar 不可用时使用 Monarch tokenizer
+ * 阶段2：Tree-sitter 语义高亮
+ * 阶段3：符号跳转（F12/Ctrl+Click）+ 引用查找（Shift+F12）
  */
-export default function CodeEditorView({ filePath, content, language, onCursorMove }: EditorProps) {
+export default function CodeEditorView({
+  filePath,
+  content,
+  language,
+  onCursorMove,
+  onGoToDefinition,
+  onFindReferences,
+}: EditorProps) {
   const editorRef = useRef<any>(null);
   const monacoRef = useRef<any>(null);
   const decorationsRef = useRef<string[]>([]);
   const highlightEnabledRef = useRef(false);
+
+  // 将当前文件路径存到 window 上，供 Provider 使用
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      (window as any).__CODELENS_CURRENT_FILE__ = filePath || '';
+    }
+  }, [filePath]);
 
   const applySemanticHighlight = useCallback(async (
     editor: any,
@@ -211,8 +290,6 @@ export default function CodeEditorView({ filePath, content, language, onCursorMo
 
     try {
       const { invoke } = await import('@tauri-apps/api/core');
-
-      // 尝试通过 Sidecar 获取语义高亮
       const result = await invoke<any>('sidecar_highlight', {
         filepath: filePathStr,
       });
@@ -220,17 +297,14 @@ export default function CodeEditorView({ filePath, content, language, onCursorMo
       if (result && result.success && Array.isArray(result.ranges) && result.ranges.length > 0) {
         const decorations = highlightRangesToDecorations(result.ranges, monaco);
         if (decorations.length > 0) {
-          // 清除旧 decorations
           if (decorationsRef.current.length > 0) {
             editor.deltaDecorations(decorationsRef.current, []);
           }
-          // 应用新 decorations
           decorationsRef.current = editor.deltaDecorations([], decorations);
           highlightEnabledRef.current = true;
         }
       }
     } catch (err) {
-      // Sidecar 不可用，降级为 Monarch tokenizer（已在 handleEditorMount 中注册）
       console.log('[CodeLens] Sidecar 不可用，使用内置高亮:', err);
       highlightEnabledRef.current = false;
     }
@@ -240,7 +314,7 @@ export default function CodeEditorView({ filePath, content, language, onCursorMo
     editorRef.current = editor;
     monacoRef.current = monaco;
 
-    // 注册自定义语言和主题
+    // 注册自定义语言、主题和 Provider
     registerCodelensLanguage(monaco);
 
     // 定义自定义暗色主题
@@ -273,7 +347,7 @@ export default function CodeEditorView({ filePath, content, language, onCursorMo
     });
     monaco.editor.setTheme('codelens-dark');
 
-    // 注入语义高亮的 CSS 类样式
+    // 注入语义高亮 CSS 类样式
     const styleSheet = document.createElement('style');
     styleSheet.textContent = `
       .codelens-keyword { color: #569CD6 !important; }
@@ -294,24 +368,23 @@ export default function CodeEditorView({ filePath, content, language, onCursorMo
         onCursorMove(e.position.lineNumber, e.position.column);
       }
     });
+
+    // Ctrl+Click 跳转定义（Monaco 内置的 definition provider 已处理）
+    // F12 跳转定义（Monaco 内置的 goToDefinition action 已处理）
+    // Shift+F12 查找引用（Monaco 内置的 goToReferences action 已处理）
   }, [onCursorMove]);
 
   // 当文件内容或路径变化时，请求语义高亮
   useEffect(() => {
     if (editorRef.current && monacoRef.current && filePath && content) {
-      // 使用 codelens-cpp 语言来同时启用 Monarch tokenizer + 语义 decorations
       const editor = editorRef.current;
       const model = editor.getModel();
-
-      // 延迟请求高亮，等 Monaco 渲染完成
       const timer = setTimeout(() => {
         applySemanticHighlight(editor, monacoRef.current, content, filePath);
       }, 100);
-
       return () => clearTimeout(timer);
     }
 
-    // 清除旧 decorations
     if (editorRef.current && decorationsRef.current.length > 0) {
       editorRef.current.deltaDecorations(decorationsRef.current, []);
       decorationsRef.current = [];
@@ -329,10 +402,12 @@ export default function CodeEditorView({ filePath, content, language, onCursorMo
     cursorBlinking: 'smooth' as const,
     smoothScrolling: true,
     automaticLayout: true,
-    // 使用自定义语言（基于 cpp 的 Monarch tokenizer）
     language: 'codelens-cpp',
-    // 禁用 Monaco 内置的语义 token（使用我们自己的 decorations 叠加）
     'semanticHighlighting.enabled': false as any,
+    // 启用代码导航功能
+    quickSuggestions: false,
+    suggestOnTriggerCharacters: false,
+    parameterHints: { enabled: false },
   };
 
   return (
@@ -354,7 +429,7 @@ export default function CodeEditorView({ filePath, content, language, onCursorMo
         <Editor
           height="100%"
           language="codelens-cpp"
-          value={content || '// 欢迎使用 CodeLens 代码阅读器\n// 请从左侧文件树打开一个文件开始\n'}
+          value={content || '// 欢迎使用 CodeLens 代码阅读器\n// 请从左侧文件树打开一个文件开始\n\n// 快捷键：\n// F12          - 跳转到定义\n// Shift+F12    - 查找所有引用\n// Ctrl+Click   - 跳转到定义\n'}
           options={editorOptions}
           onMount={handleEditorMount}
           loading={<div style={{ padding: 20, color: '#858585' }}>加载编辑器...</div>}

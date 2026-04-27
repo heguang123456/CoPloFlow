@@ -29,35 +29,39 @@ CodeLens/
 │   ├── include/
 │   │   ├── json_rpc.h      # JSON-RPC 协议处理
 │   │   ├── parser.h        # Tree-sitter 解析接口（已集成）
-│   │   ├── symbol.h        # 符号提取接口
+│   │   ├── symbol.h        # 符号提取接口（已集成）
 │   │   └── indexer.h       # 符号索引接口
 │   ├── src/
 │   │   ├── main.cpp         # Sidecar 入口 + 方法注册
 │   │   ├── json_rpc.cpp     # JSON-RPC 实现
 │   │   ├── parser.cpp       # Tree-sitter 解析服务实现
-│   │   ├── symbol.cpp       # 符号服务（占位）
+│   │   ├── symbol.cpp       # 符号服务实现（F-002 + F-003）
 │   │   └── indexer.cpp      # 索引服务（占位）
 │   └── tests/
 │       ├── test_parser.cpp  # ParserService 单元测试
+│       ├── test_symbol.cpp  # SymbolService 单元测试
 │       └── test_data/
-│           └── sample.cpp   # 测试数据（~130 行 C++ 代码）
+│           ├── sample.cpp   # 测试数据（高亮）
+│           └── (内嵌测试数据) # 符号测试数据
 │
 ├── frontend/                # Next.js 前端
 │   ├── package.json
 │   ├── next.config.js
 │   ├── tsconfig.json
 │   ├── pages/
-│   │   ├── index.tsx        # 主界面
+│   │   ├── index.tsx        # 主界面（含引用面板集成）
 │   │   └── _app.tsx         # 应用入口
 │   ├── components/
-│   │   ├── Editor.tsx       # Monaco Editor + Tree-sitter 语义高亮
+│   │   ├── Editor.tsx       # Monaco Editor + 语义高亮 + 符号跳转 + 引用查找
 │   │   ├── FileTree.tsx     # 文件树组件
-│   │   └── SymbolOutline.tsx # 符号大纲组件
+│   │   ├── SymbolOutline.tsx # 符号大纲组件
+│   │   └── ReferencesPanel.tsx # 引用查找结果面板
 │   └── styles/
 │       └── globals.css      # 全局样式
 │
 ├── docs/                    # 文档
-│   └── TEST_REPORT_PHASE2.md # 阶段2 测试报告
+│   ├── TEST_REPORT_PHASE2.md # 阶段2 测试报告
+│   └── TEST_REPORT_PHASE3.md # 阶段3 测试报告
 ├── data/                    # SQLite 数据库（运行时生成）
 ├── .gitignore
 ├── REQUIREMENTS.md          # 需求规格文档
@@ -97,7 +101,6 @@ cmake --build build --config Release
 ### 开发运行
 
 ```bash
-# 在项目根目录启动开发模式
 cd src-tauri
 cargo tauri dev
 ```
@@ -114,11 +117,21 @@ cargo tauri build
 | 功能 ID | 功能名称 | 优先级 | 状态 |
 |---------|---------|--------|------|
 | F-001 | 代码高亮 | P0 | ✅ 阶段2完成 |
-| F-002 | 符号跳转 | P0 | 🏗️ 阶段3 |
-| F-003 | 引用查找 | P0 | 🏗️ 阶段3 |
+| F-002 | 符号跳转 | P0 | ✅ 阶段3完成 |
+| F-003 | 引用查找 | P0 | ✅ 阶段3完成 |
 | F-004 | 符号大纲 | P1 | 🏗️ 阶段4 |
 | F-005 | 项目符号索引 | P1 | 🏗️ 阶段4 |
 | F-006 | 文件树浏览器 | P0 | 🏗️ 阶段5 |
+
+## 快捷键
+
+| 功能 | 快捷键 | 说明 |
+|------|--------|------|
+| 打开文件 | Ctrl+O | 系统文件选择器 |
+| 符号跳转 | F12 或 Ctrl+Click | 跳转到定义 |
+| 查找引用 | Shift+F12 | 显示引用列表 |
+| 符号搜索 | Ctrl+T | 搜索项目符号 |
+| 关闭面板 | Escape | 关闭引用面板等弹出层 |
 
 ## 阶段开发记录
 
@@ -134,7 +147,7 @@ cargo tauri build
 
 ### 阶段2：核心解析 ✅
 
-**提交**：`feat/f001-highlight` 分支
+**提交**：`feat/f001-highlight` 分支（5 个原子提交）
 **标签**：`v0.1.0-alpha`
 **内容**：
 - 集成 Tree-sitter C API（v0.20.8）和 tree-sitter-cpp 语法库
@@ -145,9 +158,30 @@ cargo tauri build
 - Google Test 单元测试（10 个用例）
 - 详细测试报告
 
-### 阶段3：符号提取 🏗️
+### 阶段3：符号提取 ✅
 
-计划内容：符号跳转（F-002）、引用查找（F-003）
+**提交**：`feat/f002-symbol-jump` 分支
+**标签**：`v0.2.0-alpha`
+**内容**：
+- 实现 SymbolService（~600 行 C++）：
+  - 符号提取：13 种符号类型（Function/Class/Struct/Variable/Enum 等）
+  - 定义查找：光标位置 → 语法树 → 符号表 → 定义位置
+  - 引用查找：符号名 → 遍历项目文件 → 同名标识符匹配
+  - 项目索引：批量扫描源文件 → 解析 → 符号表构建
+  - 限定名生成：`namespace::class::method` 格式
+- 注册 4 个 JSON-RPC 方法：
+  - `textDocument/definition`（F-002 符号跳转）
+  - `textDocument/references`（F-003 引用查找）
+  - `symbol/index`（项目索引）
+  - `symbol/extract`（单文件符号）
+- Tauri 后端新增 4 个 IPC 命令
+- 重构 Sidecar 通信为通用 `send_sidecar_request()` 函数
+- 前端集成代码导航：
+  - Monaco DefinitionProvider（F12/Ctrl+Click 跳转定义）
+  - Monaco ReferenceProvider（Shift+F12 查找引用）
+  - 新增 ReferencesPanel 组件（按文件分组、DEF 标记、上下文代码）
+- Google Test 单元测试（7 个用例）+ 14 个设计验证项
+- 详细测试报告
 
 ### 阶段4：索引与搜索 🏗️
 
@@ -172,16 +206,17 @@ cargo tauri build
 | `parser/update` | 2 | 增量更新解析 |
 | `parser/dispose` | 2 | 释放语法树缓存 |
 | `textDocument/highlight` | 2 | 获取高亮数据（便捷接口） |
+| `textDocument/definition` | 3 | 符号跳转（Go to Definition） |
+| `textDocument/references` | 3 | 引用查找 |
+| `symbol/index` | 3 | 构建项目符号索引 |
+| `symbol/extract` | 3 | 提取单文件符号 |
 
 ### 待实现
 
 | 方法 | 阶段 | 描述 |
 |------|------|------|
-| `textDocument/definition` | 3 | 符号跳转（Go to Definition） |
-| `textDocument/references` | 3 | 引用查找 |
 | `textDocument/outline` | 4 | 符号大纲 |
 | `workspace/symbol` | 4 | 项目符号搜索 |
-| `workspace/index` | 4 | 构建项目索引 |
 
 ## Git 工作流
 
