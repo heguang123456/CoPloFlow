@@ -227,9 +227,9 @@ cparser::ParseResult cparser::ParserService::updateFile(const std::string& filep
     uint32_t new_end_byte = static_cast<uint32_t>(new_len - common_suffix);
 
     // 计算行列
-    TSPoint start_point = ts_point_zero();
-    TSPoint old_end_point = ts_point_zero();
-    TSPoint new_end_point = ts_point_zero();
+    TSPoint start_point = {0, 0};
+    TSPoint old_end_point = {0, 0};
+    TSPoint new_end_point = {0, 0};
 
     for (uint32_t i = 0; i < start_byte; i++) {
         if (entry.content[i] == '\n') {
@@ -346,16 +346,13 @@ void cparser::ParserService::traverseNode(TSNode node,
     TSNode parent = ts_node_parent(node);
     const char* field_name = nullptr;
     if (!ts_node_is_null(parent)) {
-        uint32_t field_id = 0;
-        if (ts_node_child_by_field_name(parent, "", 0, &field_id)) {
-            // 查找当前节点在父节点中的字段名
-            uint32_t child_count = ts_node_child_count(parent);
-            for (uint32_t i = 0; i < child_count; i++) {
-                TSNode child = ts_node_child(parent, i);
-                if (ts_node_eq(child, node)) {
-                    field_name = ts_node_field_name_for_child(parent, i);
-                    break;
-                }
+        // 查找当前节点在父节点中的字段名
+        uint32_t child_count = ts_node_child_count(parent);
+        for (uint32_t i = 0; i < child_count; i++) {
+            TSNode child = ts_node_child(parent, i);
+            if (ts_node_eq(child, node)) {
+                field_name = ts_node_field_name_for_child(parent, i);
+                break;
             }
         }
     }

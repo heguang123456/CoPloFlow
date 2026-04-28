@@ -124,9 +124,9 @@ public:
 private:
     /// 缓存的语法树条目
     struct TreeCacheEntry {
-        std::unique_ptr<TSTree, void(*)(TSTree*)> tree;
+        std::unique_ptr<TSTree, void(*)(TSTree*)> tree{nullptr, [](TSTree*){}};
         std::string content;
-        TSParser* parser;
+        TSParser* parser = nullptr;
     };
 
     /// 初始化所有内置语言

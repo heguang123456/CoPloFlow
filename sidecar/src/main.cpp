@@ -17,6 +17,8 @@
  * - textDocument/references         引用查找（F-003）
  * - symbol/index                    构建项目符号索引
  * - symbol/extract                  提取单文件符号
+ * - symbol/search                    搜索符号（F-005）
+ * - textDocument/outline            文档符号大纲（F-004）
  */
 
 #include "json_rpc.h"
@@ -24,6 +26,10 @@
 #include "symbol.h"
 
 #include <iostream>
+#include <fstream>
+#include <sstream>
+#include <algorithm>
+#include <functional>
 #include <csignal>
 #include <nlohmann/json.hpp>
 
@@ -115,7 +121,7 @@ int main() {
                 {"textDocumentSync", 1},
                 {"definitionProvider", true},          // ✅ 阶段3
                 {"referencesProvider", true},          // ✅ 阶段3
-                {"documentSymbolProvider", false},     // 阶段4
+                {"documentSymbolProvider", true},      // ✅ 阶段4 F-004
                 {"workspaceSymbolProvider", false},    // 阶段4
                 {"highlightProvider", true},           // ✅ 阶段2
             }},
@@ -384,6 +390,123 @@ int main() {
         };
     });
 
+    // 搜索符号（F-005）
+    server.registerMethod("symbol/search", [&symbolService](const json& params) -> json {
+        std::string query = params.value("query", "");
+        int limit = params.value("limit", 50);
+
+        if (query.size() < 2) {
+            return {
+                {"success", true},
+                {"query", query},
+                {"totalCount", 0},
+                {"results", json::array()},
+            };
+        }
+
+        auto symbols = symbolService.searchSymbols(query, limit);
+
+        json results_arr = json::array();
+        for (const auto& sym : symbols) {
+            results_arr.push_back({
+                {"name", sym.name},
+                {"kind", symbol_ns::Symbol::kindToString(sym.kind)},
+                {"filePath", sym.file_path},
+                {"line", sym.start_line},
+                {"col", sym.start_col},
+                {"qualifiedName", sym.qualified_name},
+            });
+        }
+
+        return {
+            {"success", true},
+            {"query", query},
+            {"totalCount", results_arr.size()},
+            {"results", results_arr},
+        };
+    });
+
+    // 文档符号大纲（F-004）
+    server.registerMethod("textDocument/outline", [&symbolService](const json& params) -> json {
+        std::string filepath = params.value("filepath", "");
+        if (filepath.empty()) {
+            throw std::runtime_error("Missing required parameter: filepath");
+        }
+
+        // 1. 提取扁平符号列表
+        auto symbols = symbolService.extractSymbols(filepath);
+
+        // 2. 按起始行号排序
+        std::sort(symbols.begin(), symbols.end(),
+            [](const symbol_ns::Symbol& a, const symbol_ns::Symbol& b) {
+                return a.start_line < b.start_line;
+            });
+
+        // 3. 构建嵌套大纲树（使用栈算法）
+        //    OutlineNode: { name, kind, line, children }
+        struct OutlineNode {
+            std::string name;
+            std::string kind;
+            uint32_t line;
+            uint32_t end_line;
+            std::vector<OutlineNode> children;
+        };
+
+        std::vector<OutlineNode> root_nodes;
+        std::vector<OutlineNode*> stack; // 指向栈中容器的指针
+
+        auto isContainer = [](const std::string& kind) -> bool {
+            return kind == "Class" || kind == "Struct" || kind == "Namespace";
+        };
+
+        for (const auto& sym : symbols) {
+            OutlineNode node;
+            node.name = sym.name;
+            node.kind = symbol_ns::Symbol::kindToString(sym.kind);
+            node.line = sym.start_line;
+            node.end_line = sym.end_line;
+
+            // 弹出栈中不包含当前节点的父容器
+            while (!stack.empty() && stack.back()->end_line < sym.start_line) {
+                stack.pop_back();
+            }
+
+            if (stack.empty()) {
+                root_nodes.push_back(std::move(node));
+                if (isContainer(root_nodes.back().kind)) {
+                    stack.push_back(&root_nodes.back());
+                }
+            } else {
+                stack.back()->children.push_back(std::move(node));
+                if (isContainer(stack.back()->children.back().kind)) {
+                    stack.push_back(&stack.back()->children.back());
+                }
+            }
+        }
+
+        // 4. 递归转换为 JSON
+        std::function<json(const std::vector<OutlineNode>&)> nodesToJson;
+        nodesToJson = [&nodesToJson](const std::vector<OutlineNode>& nodes) -> json {
+            json arr = json::array();
+            for (const auto& n : nodes) {
+                arr.push_back({
+                    {"name", n.name},
+                    {"kind", n.kind},
+                    {"line", n.line},
+                    {"children", nodesToJson(n.children)},
+                });
+            }
+            return arr;
+        };
+
+        return {
+            {"success", true},
+            {"filepath", filepath},
+            {"symbolCount", symbols.size()},
+            {"outlineNodes", nodesToJson(root_nodes)},
+        };
+    });
+
     // 启动消息循环
     std::cerr << "[CodeLens Sidecar] JSON-RPC 2.0 server started (v0.3.0)" << std::endl;
     std::cerr << "[CodeLens Sidecar] Supported languages: ";
@@ -391,7 +514,7 @@ int main() {
         std::cerr << lang << " ";
     }
     std::cerr << std::endl;
-    std::cerr << "[CodeLens Sidecar] Capabilities: highlight, definition, references" << std::endl;
+    std::cerr << "[CodeLens Sidecar] Capabilities: highlight, definition, references, outline, index, search" << std::endl;
 
     server.run();
 

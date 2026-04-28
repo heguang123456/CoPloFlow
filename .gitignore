@@ -19,6 +19,7 @@ frontend/.next/
 sidecar/build/
 sidecar/out/
 sidecar/cmake-build-*/
+sidecar/third_party/
 *.obj
 *.o
 *.exe

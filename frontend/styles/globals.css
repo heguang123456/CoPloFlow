@@ -89,6 +89,189 @@ html, body {
   background: var(--bg-hover);
 }
 
+/* --- 搜索栏（F-005） --- */
+.search-bar {
+  display: flex;
+  align-items: center;
+  margin-left: auto;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  padding: 2px 6px;
+  height: 26px;
+  width: 260px;
+  -webkit-app-region: no-drag;
+  transition: border-color 0.15s;
+}
+
+.search-bar:focus-within {
+  border-color: var(--accent-color);
+}
+
+.search-bar-icon {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-right: 4px;
+  flex-shrink: 0;
+  user-select: none;
+}
+
+.search-input {
+  flex: 1;
+  background: none;
+  border: none;
+  outline: none;
+  color: var(--text-primary);
+  font-size: 12px;
+  font-family: inherit;
+}
+
+.search-input::placeholder {
+  color: var(--text-muted);
+}
+
+.search-bar-clear {
+  font-size: 16px;
+  padding: 0 2px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.search-bar-clear:hover {
+  color: var(--text-primary);
+}
+
+/* --- 搜索结果面板（F-005） --- */
+.search-panel {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 420px;
+  max-height: 70%;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.search-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border-color);
+  flex-shrink: 0;
+}
+
+.search-panel-title {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.search-count {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.search-panel-close {
+  font-size: 16px;
+}
+
+.search-panel-content {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.search-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 24px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.search-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 16px;
+  color: var(--text-secondary);
+  text-align: center;
+  gap: 6px;
+}
+
+.search-results {
+  list-style: none;
+  padding: 4px 0;
+  margin: 0;
+}
+
+.search-result-item {
+  display: flex;
+  align-items: center;
+  padding: 4px 12px;
+  cursor: pointer;
+  gap: 6px;
+  border-left: 2px solid transparent;
+}
+
+.search-result-item:hover,
+.search-result-active {
+  background: var(--bg-hover);
+  border-left-color: var(--accent-color);
+}
+
+.search-result-icon {
+  font-size: 11px;
+  width: 16px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.search-result-name {
+  font-size: 13px;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex-shrink: 1;
+}
+
+.search-result-kind {
+  font-size: 10px;
+  color: var(--text-muted);
+  background: var(--bg-active);
+  padding: 1px 5px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.search-result-file {
+  font-size: 11px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex-shrink: 1;
+}
+
+.search-result-dir {
+  color: var(--text-muted);
+}
+
+.search-result-line {
+  font-size: 11px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
 /* --- 主内容区 --- */
 .main-content {
   display: flex;
@@ -304,6 +487,80 @@ html, body {
 .outline-line {
   font-size: 11px;
   color: var(--text-muted);
+}
+
+/* 符号大纲 - 计数徽标 */
+.outline-count {
+  margin-left: auto;
+  background: var(--bg-active);
+  color: var(--text-secondary);
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 8px;
+}
+
+/* 符号大纲 - 加载状态 */
+.outline-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--text-secondary);
+  gap: 8px;
+  font-size: 12px;
+}
+
+.outline-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--border-color);
+  border-top-color: var(--accent-color);
+  border-radius: 50%;
+  animation: outline-spin 0.6s linear infinite;
+}
+
+@keyframes outline-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* 符号大纲 - 嵌套节点 */
+.outline-node {
+  list-style: none;
+}
+
+/* 符号大纲 - 展开/折叠箭头 */
+.outline-toggle {
+  width: 16px;
+  font-size: 9px;
+  color: var(--text-muted);
+  cursor: pointer;
+  text-align: center;
+  flex-shrink: 0;
+  user-select: none;
+  line-height: 1;
+}
+
+.outline-toggle:hover {
+  color: var(--text-primary);
+}
+
+.outline-toggle-invisible {
+  visibility: hidden;
+}
+
+/* 符号大纲 - 激活态 */
+.outline-item-active {
+  background: var(--bg-active) !important;
+}
+
+.outline-item-active .outline-name {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.outline-item-active .outline-line {
+  color: var(--accent-color);
 }
 
 /* --- 按钮 --- */
