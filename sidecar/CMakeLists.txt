@@ -5,12 +5,19 @@
 # 依赖管理：CMake FetchContent（版本锁定）
 
 cmake_minimum_required(VERSION 3.24)
-project(codelens-sidecar VERSION 0.1.0 LANGUAGES CXX)
+
+# 允许 FetchContent_Populate（tree-sitter 无 CMakeLists.txt，需手动构建）
+cmake_policy(SET CMP0169 OLD)
+
+project(codelens-sidecar VERSION 0.2.0 LANGUAGES C CXX)
 
 # --- C++ 标准设定 ---
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
+
+# --- C 标准设定（Tree-sitter 是 C 库） ---
+set(CMAKE_C_STANDARD 11)
 
 # --- 构建类型 ---
 if(NOT CMAKE_BUILD_TYPE)
@@ -19,49 +26,67 @@ endif()
 
 # --- 编译选项 ---
 if(MSVC)
-    add_compile_options(/W4 /permissive- /Zc:__cplusplus)
-    # Release 优化
-    add_compile_options($<$<CONFIG:Release>:/O2 /DNDEBUG>)
-    # Debug 调试信息
-    add_compile_options($<$<CONFIG:Debug>:/Zi /Od /D_DEBUG>)
+    add_compile_options(/W4 /permissive- /Zc:__cplusplus /utf-8)
 else()
     add_compile_options(-Wall -Wextra -Wpedantic)
 endif()
 
-# --- FetchContent 配置 ---
-include(FetchContent)
+# --- 依赖管理（全部使用本地 third_party，避免网络问题） ---
 
-# Tree-sitter C API（版本锁定 v0.20.8）
-FetchContent_Declare(
-    tree_sitter
-    GIT_REPOSITORY https://github.com/tree-sitter/tree-sitter.git
-    GIT_TAG        v0.20.8
-    GIT_SHALLOW    TRUE
+# nlohmann/json（v3.11.3）
+set(NLOHMANN_JSON_DIR ${CMAKE_CURRENT_SOURCE_DIR}/third_party/nlohmann_json)
+add_library(nlohmann_json INTERFACE)
+target_include_directories(nlohmann_json INTERFACE ${NLOHMANN_JSON_DIR}/include)
+
+# Tree-sitter（v0.20.8）—— 使用本地 third_party，避免网络问题
+set(TREE_SITTER_DIR ${CMAKE_CURRENT_SOURCE_DIR}/third_party/tree-sitter)
+add_library(tree_sitter STATIC
+    ${TREE_SITTER_DIR}/lib/src/lib.c
+    ${TREE_SITTER_DIR}/lib/src/alloc.c
+    ${TREE_SITTER_DIR}/lib/src/get_changed_ranges.c
+    ${TREE_SITTER_DIR}/lib/src/language.c
+    ${TREE_SITTER_DIR}/lib/src/lexer.c
+    ${TREE_SITTER_DIR}/lib/src/node.c
+    ${TREE_SITTER_DIR}/lib/src/parser.c
+    ${TREE_SITTER_DIR}/lib/src/query.c
+    ${TREE_SITTER_DIR}/lib/src/stack.c
+    ${TREE_SITTER_DIR}/lib/src/subtree.c
+    ${TREE_SITTER_DIR}/lib/src/tree.c
+    ${TREE_SITTER_DIR}/lib/src/tree_cursor.c
 )
-
-# SQLite3（版本锁定 3.45.0）
-FetchContent_Declare(
-    sqlite3
-    GIT_REPOSITORY https://github.com/nicferrier/sqlite3-cmake.git
-    GIT_TAG        master
-    GIT_SHALLOW    TRUE
+target_include_directories(tree_sitter PUBLIC
+    ${TREE_SITTER_DIR}/lib/include
 )
-
-# Google Test（版本锁定 v1.14.0，仅测试时构建）
-FetchContent_Declare(
-    googletest
-    GIT_REPOSITORY https://github.com/google/googletest.git
-    GIT_TAG        v1.14.0
-    GIT_SHALLOW    TRUE
+target_include_directories(tree_sitter PRIVATE
+    ${TREE_SITTER_DIR}/lib/src
 )
+if(MSVC)
+    target_compile_definitions(tree_sitter PRIVATE _CRT_SECURE_NO_WARNINGS)
+endif()
 
-# --- 暂不拉取依赖（后续阶段按需启用） ---
-# FetchContent_MakeAvailable(tree_sitter sqlite3)
+# Tree-sitter C++ 语法库（v0.20.5）—— 使用本地 third_party
+set(TREE_SITTER_CPP_DIR ${CMAKE_CURRENT_SOURCE_DIR}/third_party/tree-sitter-cpp)
+add_library(tree_sitter_cpp STATIC
+    ${TREE_SITTER_CPP_DIR}/src/parser.c
+    ${TREE_SITTER_CPP_DIR}/src/scanner.c
+)
+target_include_directories(tree_sitter_cpp PUBLIC
+    ${TREE_SITTER_CPP_DIR}/src
+)
+target_link_libraries(tree_sitter_cpp PRIVATE tree_sitter)
+
+# --- 测试目标（后续阶段启用） ---
+# TODO: 添加 Google Test 支持
+# enable_testing()
+# add_subdirectory(tests)
 
 # --- 源文件 ---
 set(SIDECAR_SOURCES
     src/main.cpp
     src/json_rpc.cpp
+    src/parser.cpp
+    src/symbol.cpp
+    src/indexer.cpp
 )
 
 set(SIDECAR_HEADERS
@@ -79,6 +104,18 @@ target_include_directories(codelens-sidecar
         ${CMAKE_CURRENT_SOURCE_DIR}/include
         ${CMAKE_CURRENT_BINARY_DIR}
 )
+
+# 链接 Tree-sitter 和 tree-sitter-cpp
+target_link_libraries(codelens-sidecar PRIVATE
+    tree_sitter
+    tree_sitter_cpp
+    nlohmann_json
+)
+
+# Windows 特殊处理：抑制某些警告
+if(WIN32)
+    target_compile_definitions(codelens-sidecar PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+endif()
 
 # --- 测试目标（后续阶段启用） ---
 # enable_testing()
