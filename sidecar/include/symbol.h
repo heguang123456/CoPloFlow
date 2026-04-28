@@ -15,6 +15,7 @@
  * - findReferences:   在项目范围内查找符号的所有引用
  * - resolveOverloads: 根据上下文消解函数重载
  * - indexProject:     索引项目所有源文件
+ * - searchSymbols:    模糊匹配搜索符号
  */
 
 #ifndef CODELENS_SYMBOL_H_
@@ -24,8 +25,11 @@
 #include <vector>
 #include <optional>
 #include <unordered_map>
+#include <unordered_set>
+#include <functional>
 #include <mutex>
 #include <filesystem>
+#include <cctype>
 
 // Tree-sitter C API
 extern "C" {
@@ -152,6 +156,12 @@ public:
     /// @return 成功索引的文件数量
     size_t indexProject(const std::string& project_path);
 
+    /// 搜索符号（前缀匹配 + 子串匹配，按相关度排序）
+    /// @param query 搜索关键词（≥ 2 字符）
+    /// @param limit 最大返回结果数
+    /// @return 匹配的符号列表
+    std::vector<Symbol> searchSymbols(const std::string& query, int limit = 50) const;
+
     /// 清除所有符号表数据
     void clearIndex();
 
@@ -213,7 +223,7 @@ private:
 
     // 文件缓存（文件路径 → {语法树, 源代码}）
     struct FileCacheEntry {
-        std::unique_ptr<TSTree, void(*)(TSTree*)> tree;
+        std::unique_ptr<TSTree, void(*)(TSTree*)> tree{nullptr, [](TSTree*){}};
         std::string content;
     };
     std::unordered_map<std::string, FileCacheEntry> file_cache_;

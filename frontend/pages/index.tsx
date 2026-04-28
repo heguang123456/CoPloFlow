@@ -3,7 +3,8 @@ import FileTree from '@/components/FileTree';
 import Editor from '@/components/Editor';
 import SymbolOutline from '@/components/SymbolOutline';
 import ReferencesPanel from '@/components/ReferencesPanel';
-import { useState, useCallback } from 'react';
+import SearchPanel from '@/components/SearchPanel';
+import { useState, useCallback, useEffect, useRef } from 'react';
 
 // 扩展 Window 类型声明
 declare global {
@@ -19,18 +20,31 @@ declare global {
  * 布局：三栏式
  * - 左侧：文件树浏览器（F-006）
  * - 中间：Monaco Editor 代码编辑区（F-001 + F-002 + F-003）
- * - 右侧：符号大纲面板（F-004）+ 引用面板（F-003）
+ * - 右侧：符号大纲面板（F-004）+ 搜索面板（F-005）
  * - 底部：状态栏
  *
  * 阶段3新增：
  * - 符号跳转：F12 / Ctrl+Click 跳转到定义
  * - 引用查找：Shift+F12 查找所有引用
  * - 引用结果面板
+ *
+ * 阶段4新增：
+ * - 项目符号搜索：Ctrl+Shift+F 全局搜索
+ * - 搜索结果面板 + 点击跳转
  */
 
 interface CursorPosition {
   line: number;
   col: number;
+}
+
+interface SearchResultItem {
+  name: string;
+  kind: string;
+  filePath: string;
+  line: number;
+  col: number;
+  qualifiedName: string;
 }
 
 export default function Home() {
@@ -44,6 +58,15 @@ export default function Home() {
   const [refsSymbolName, setRefsSymbolName] = useState('');
   const [refsList, setRefsList] = useState<any[]>([]);
   const [refsLoading, setRefsLoading] = useState(false);
+
+  // 符号搜索状态（F-005）
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchInput, setSearchInput] = useState('');
+  const [showSearch, setShowSearch] = useState(false);
+  const [searchResults, setSearchResults] = useState<SearchResultItem[]>([]);
+  const [searchTotalCount, setSearchTotalCount] = useState(0);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const searchTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const handleFileSelect = async (filePath: string) => {
     setCurrentFile(filePath);
@@ -89,6 +112,16 @@ export default function Home() {
       if (ext && langMap[ext]) {
         setLanguage(langMap[ext]);
       }
+
+      // 跳转到目标行
+      setTimeout(() => {
+        const editor = (window as any).__MONACO_EDITOR__;
+        if (editor) {
+          editor.revealLineInCenter(line + 1);
+          editor.setPosition({ lineNumber: line + 1, column: 1 });
+          editor.focus();
+        }
+      }, 100);
     } catch (err) {
       console.error('无法跳转到文件:', err);
     }
@@ -99,6 +132,15 @@ export default function Home() {
     await handleGoToDefinition(filePath, line, _col);
     // 跳转后关闭引用面板
     setShowRefs(false);
+  }, [handleGoToDefinition]);
+
+  // 跳转到搜索结果位置
+  const handleJumpToSearchResult = useCallback(async (filePath: string, line: number, col: number) => {
+    await handleGoToDefinition(filePath, line, col);
+    // 跳转后关闭搜索面板
+    setShowSearch(false);
+    setSearchInput('');
+    setSearchQuery('');
   }, [handleGoToDefinition]);
 
   // 触发引用查找
@@ -144,6 +186,73 @@ export default function Home() {
     }
   }, [currentFile, cursorPos]);
 
+  // 搜索输入处理（防抖 200ms）
+  const handleSearchInput = useCallback((value: string) => {
+    setSearchInput(value);
+
+    // 清除上一个定时器
+    if (searchTimerRef.current) {
+      clearTimeout(searchTimerRef.current);
+    }
+
+    if (value.length < 2) {
+      setSearchQuery('');
+      setSearchResults([]);
+      setSearchTotalCount(0);
+      setShowSearch(false);
+      return;
+    }
+
+    // 防抖 200ms
+    searchTimerRef.current = setTimeout(async () => {
+      setShowSearch(true);
+      setSearchLoading(true);
+      setSearchQuery(value);
+
+      try {
+        const { invoke } = await import('@tauri-apps/api/core');
+        const result = await invoke<{
+          success: boolean;
+          query: string;
+          totalCount: number;
+          results: SearchResultItem[];
+        }>('sidecar_search_symbols', { query: value, limit: 50 });
+
+        if (result && result.success) {
+          setSearchResults(result.results || []);
+          setSearchTotalCount(result.totalCount || 0);
+        } else {
+          setSearchResults([]);
+          setSearchTotalCount(0);
+        }
+      } catch (err) {
+        console.error('符号搜索失败:', err);
+        setSearchResults([]);
+        setSearchTotalCount(0);
+      } finally {
+        setSearchLoading(false);
+      }
+    }, 200);
+  }, []);
+
+  // Ctrl+Shift+F 快捷键触发搜索
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'F') {
+        e.preventDefault();
+        // 聚焦搜索输入框
+        const input = document.querySelector('.search-input') as HTMLInputElement;
+        if (input) {
+          input.focus();
+          input.select();
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
   return (
     <>
       <Head>
@@ -153,7 +262,7 @@ export default function Home() {
       </Head>
 
       <div className="app-container">
-        {/* 菜单栏 */}
+        {/* 菜单栏 + 搜索栏 */}
         <header className="menu-bar">
           <span className="menu-item">文件(F)</span>
           <span className="menu-item">编辑(E)</span>
@@ -167,6 +276,37 @@ export default function Home() {
             转到(G)
           </span>
           <span className="menu-item">帮助(H)</span>
+
+          {/* 搜索栏（F-005） */}
+          <div className="search-bar">
+            <span className="search-bar-icon">&#128269;</span>
+            <input
+              className="search-input"
+              type="text"
+              placeholder="搜索符号... (Ctrl+Shift+F)"
+              value={searchInput}
+              onChange={(e) => handleSearchInput(e.target.value)}
+              onFocus={() => {
+                if (searchInput.length >= 2 && searchResults.length > 0) {
+                  setShowSearch(true);
+                }
+              }}
+            />
+            {searchInput && (
+              <button
+                className="btn-icon search-bar-clear"
+                onClick={() => {
+                  setSearchInput('');
+                  setSearchQuery('');
+                  setSearchResults([]);
+                  setSearchTotalCount(0);
+                  setShowSearch(false);
+                }}
+              >
+                ×
+              </button>
+            )}
+          </div>
         </header>
 
         {/* 主内容区 */}
@@ -197,11 +337,38 @@ export default function Home() {
                 onClose={() => setShowRefs(false)}
               />
             )}
+
+            {/* 搜索结果面板（浮动，F-005） */}
+            {showSearch && (
+              <SearchPanel
+                query={searchQuery}
+                results={searchResults}
+                totalCount={searchTotalCount}
+                isLoading={searchLoading}
+                onJumpTo={handleJumpToSearchResult}
+                onClose={() => {
+                  setShowSearch(false);
+                  setSearchInput('');
+                  setSearchQuery('');
+                }}
+              />
+            )}
           </section>
 
           {/* 右侧：符号大纲 */}
           <aside className="sidebar-right">
-            <SymbolOutline filePath={currentFile} />
+            <SymbolOutline
+              filePath={currentFile}
+              onSymbolClick={(line) => {
+                // 跳转到编辑器对应行：通过 Monaco Editor API 实现行滚动
+                const editor = (window as any).__MONACO_EDITOR__;
+                if (editor) {
+                  editor.revealLineInCenter(line + 1);
+                  editor.setPosition({ lineNumber: line + 1, column: 1 });
+                  editor.focus();
+                }
+              }}
+            />
           </aside>
         </main>
 
@@ -221,7 +388,7 @@ export default function Home() {
             onClick={triggerFindReferences}
             title="Shift+F12 查找引用"
           >
-            CodeLens v0.3.0
+            CodeLens v0.4.0
           </span>
         </footer>
       </div>

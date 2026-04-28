@@ -18,9 +18,14 @@
 #include <algorithm>
 #include <iostream>
 #include <filesystem>
+#include <functional>
 
 namespace fs = std::filesystem;
 namespace symbol_ns = codelens::symbol;
+using symbol_ns::Symbol;
+using symbol_ns::SymbolKind;
+using symbol_ns::DefinitionResult;
+using symbol_ns::ReferenceLocation;
 
 // ============================================================
 // 辅助函数
@@ -61,7 +66,7 @@ static const std::vector<std::string>& getSourceExtensions() {
 // Symbol 静态方法
 // ============================================================
 
-std::string Symbol::kindToString(SymbolKind k) {
+std::string symbol_ns::Symbol::kindToString(symbol_ns::SymbolKind k) {
     switch (k) {
         case SymbolKind::Function:     return "Function";
         case SymbolKind::Class:        return "Class";
@@ -907,6 +912,86 @@ size_t symbol_ns::SymbolService::getSymbolCount() const {
 std::vector<std::string> symbol_ns::SymbolService::getIndexedFiles() const {
     std::lock_guard<std::mutex> lock(mutex_);
     return std::vector<std::string>(indexed_files_.begin(), indexed_files_.end());
+}
+
+std::vector<Symbol> symbol_ns::SymbolService::searchSymbols(const std::string& query, int limit) const {
+    std::lock_guard<std::mutex> lock(mutex_);
+
+    std::vector<Symbol> results;
+
+    if (query.size() < 2 || symbol_table_.empty()) {
+        return results;
+    }
+
+    // 转小写用于大小写不敏感匹配
+    std::string query_lower = query;
+    std::transform(query_lower.begin(), query_lower.end(), query_lower.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+
+    // 辅助函数：大小写不敏感的子串匹配
+    auto containsLower = [](const std::string& haystack, const std::string& needle) -> bool {
+        auto it = std::search(
+            haystack.begin(), haystack.end(),
+            needle.begin(), needle.end(),
+            [](unsigned char a, unsigned char b) {
+                return std::tolower(a) == std::tolower(b);
+            });
+        return it != haystack.end();
+    };
+
+    // 策略1：前缀匹配（最高优先级）
+    for (const auto& [name, entries] : symbol_table_) {
+        if (static_cast<int>(results.size()) >= limit) break;
+
+        std::string name_lower = name;
+        std::transform(name_lower.begin(), name_lower.end(), name_lower.begin(),
+                       [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+
+        if (name_lower.compare(0, query_lower.size(), query_lower) == 0) {
+            for (const auto& entry : entries) {
+                if (static_cast<int>(results.size()) >= limit) break;
+                results.push_back(entry.symbol);
+            }
+        }
+    }
+
+    // 策略2：子串匹配（补充，避免重复）
+    if (static_cast<int>(results.size()) < limit) {
+        // 构建已收集符号的指纹集合用于去重
+        std::unordered_set<std::string> seen;
+        for (const auto& sym : results) {
+            seen.insert(sym.name + "|" + sym.file_path + "|" + std::to_string(sym.start_line));
+        }
+
+        for (const auto& [name, entries] : symbol_table_) {
+            if (static_cast<int>(results.size()) >= limit) break;
+
+            // 跳过前缀匹配已命中的（避免重复）
+            std::string name_lower = name;
+            std::transform(name_lower.begin(), name_lower.end(), name_lower.begin(),
+                           [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+            if (name_lower.compare(0, query_lower.size(), query_lower) == 0) continue;
+
+            if (containsLower(name, query_lower)) {
+                for (const auto& entry : entries) {
+                    if (static_cast<int>(results.size()) >= limit) break;
+                    std::string fingerprint = entry.symbol.name + "|" + entry.symbol.file_path + "|"
+                                             + std::to_string(entry.symbol.start_line);
+                    if (seen.insert(fingerprint).second) {
+                        results.push_back(entry.symbol);
+                    }
+                }
+            }
+        }
+    }
+
+    // 按名称长度排序（短名优先，更精确的匹配排前面）
+    std::sort(results.begin(), results.end(),
+              [](const Symbol& a, const Symbol& b) {
+                  return a.name.size() < b.name.size();
+              });
+
+    return results;
 }
 
 TSTree* symbol_ns::SymbolService::getOrCreateTree(const std::string& filepath,

@@ -7,6 +7,10 @@
 //! - sidecar_find_references  引用查找命令
 //! - sidecar_index_project    项目符号索引命令
 //! - sidecar_extract_symbols  单文件符号提取命令
+//! - sidecar_document_outline 文档符号大纲命令（F-004）
+//!
+//! 阶段4新增：
+//! - sidecar_search_symbols   项目符号搜索命令（F-005）
 
 /// 应用启动时执行的初始化逻辑
 ///
@@ -29,6 +33,8 @@ pub fn run() {
             sidecar_find_references,
             sidecar_index_project,
             sidecar_extract_symbols,
+            sidecar_document_outline,
+            sidecar_search_symbols,
         ])
         .setup(|_app| {
             log::info!("CodeLens 代码阅读器启动 (v0.3.0)");
@@ -199,6 +205,33 @@ fn sidecar_extract_symbols(filepath: String) -> Result<serde_json::Value, String
     let sidecar_path = find_sidecar_path()?;
     let result = send_sidecar_request(&sidecar_path, "symbol/extract", serde_json::json!({
         "filepath": filepath,
+    }))?;
+    Ok(result)
+}
+
+/// 文档符号大纲（F-004）
+///
+/// 输入：文件路径
+/// 输出：嵌套大纲结构（名称 + 类型 + 行号 + 子节点）
+#[tauri::command]
+fn sidecar_document_outline(filepath: String) -> Result<serde_json::Value, String> {
+    let sidecar_path = find_sidecar_path()?;
+    let result = send_sidecar_request(&sidecar_path, "textDocument/outline", serde_json::json!({
+        "filepath": filepath,
+    }))?;
+    Ok(result)
+}
+
+/// 搜索项目符号（F-005）
+///
+/// 输入：搜索关键词 + 最大结果数
+/// 输出：匹配符号列表（名称 + 类型 + 文件 + 行号 + 限定名）
+#[tauri::command]
+fn sidecar_search_symbols(query: String, limit: Option<u32>) -> Result<serde_json::Value, String> {
+    let sidecar_path = find_sidecar_path()?;
+    let result = send_sidecar_request(&sidecar_path, "symbol/search", serde_json::json!({
+        "query": query,
+        "limit": limit.unwrap_or(50),
     }))?;
     Ok(result)
 }
