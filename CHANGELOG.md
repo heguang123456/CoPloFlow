@@ -5,6 +5,69 @@
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
+## [0.4.0] - 2026-04-29
+
+### 新增 (Added)
+
+#### C++ Sidecar - 文档符号大纲（F-004）
+- 新增 `textDocument/outline` JSON-RPC 方法：
+  - 提取当前文件所有符号，返回嵌套树结构
+  - 基于栈算法构建父子关系（Class/Struct/Namespace 为容器节点）
+  - 支持函数、方法、构造/析构函数、类、结构体、变量、枚举、命名空间等类型
+  - 按起始行号排序，递归转换为 JSON
+
+#### C++ Sidecar - 项目符号搜索（F-005）
+- 新增 `SymbolService::searchSymbols()` 方法（~80 行 C++）：
+  - 双策略搜索：前缀匹配（最高优先级） + 子串匹配（补充）
+  - 大小写不敏感匹配
+  - 基于 `name|filePath|line` 指纹去重
+  - 按名称长度排序（短名优先）
+  - 支持自定义结果数量限制（默认 50）
+  - 关键词长度 < 2 时返回空结果
+- 新增 `symbol/search` JSON-RPC 方法
+
+#### Tauri 后端
+- 新增 `sidecar_document_outline` 命令（F-004）
+- 新增 `sidecar_search_symbols` 命令（F-005，支持可选 limit 参数）
+
+#### 前端
+- 重写 `SymbolOutline.tsx` — 从占位组件升级为完整实现：
+  - 通过 Tauri IPC 调用 `sidecar_document_outline`
+  - 递归嵌套渲染（`OutlineItem` 子组件 + 展开/折叠）
+  - 符号类型图标和颜色区分（13 种类型）
+  - 文件切换自动刷新大纲
+  - 点击符号跳转到对应行（高亮当前选中项）
+  - 加载态、错误态、空态完整处理
+- 新增 `SearchPanel.tsx` 搜索结果面板：
+  - 符号类型图标和颜色区分
+  - 显示符号名称、类型标签、文件名（含目录）、行号
+  - 键盘导航（ArrowUp/Down/Enter/Escape）
+  - 点击结果跳转到目标文件和行号
+- 更新 `index.tsx`：
+  - 菜单栏搜索框（带搜索图标、placeholder 提示快捷键、清除按钮）
+  - 搜索状态管理（searchQuery、searchResults、searchLoading 等）
+  - `handleSearchInput` 带 200ms 防抖，调用 `sidecar_search_symbols`
+  - Ctrl+Shift+F 全局快捷键（聚焦搜索输入框）
+  - `handleJumpToSearchResult` 打开文件 + 跳转行号 + 关闭面板
+  - 浮动 SearchPanel 面板渲染在编辑器区域
+- 新增搜索相关 CSS 样式（~80 行）：
+  - 搜索栏样式（.search-bar, .search-input, .search-bar-clear）
+  - 搜索面板样式（.search-panel, .search-result-item, .search-result-active）
+  - 符号大纲增强样式（.outline-count, .outline-loading, .outline-node）
+
+#### 文档
+- 新增 `docs/DESIGN_F004_OUTLINE.md` — F-004 符号大纲设计文档
+- 新增 `docs/DESIGN_F005_INDEX.md` — F-005 符号索引设计文档（含 SQLite 集成方案）
+- 新增 `docs/TEST_REPORT_PHASE4.md` — 阶段4测试报告（24 项测试全部通过）
+
+### 变更 (Changed)
+- `symbol.h` — 新增 `searchSymbols` 方法声明
+- `symbol.cpp` — 新增 `searchSymbols` 方法实现（~80 行）
+- `main.cpp` — 从 13 个方法扩展为 15 个方法，新增 outline 和 search
+- `lib.rs` — 从 10 个命令扩展为 12 个命令
+- `SymbolOutline.tsx` — 从占位组件重写为完整 IPC 集成
+- `index.tsx` — 新增搜索栏、搜索面板、搜索状态管理
+
 ## [0.2.0-alpha] - 2026-04-27
 
 ### 新增 (Added)
