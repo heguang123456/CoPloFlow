@@ -4,6 +4,7 @@ import Editor from '@/components/Editor';
 import SymbolOutline from '@/components/SymbolOutline';
 import ReferencesPanel from '@/components/ReferencesPanel';
 import SearchPanel from '@/components/SearchPanel';
+import { useTheme } from '@/components/ThemeProvider';
 import { useState, useCallback, useEffect, useRef } from 'react';
 
 // 扩展 Window 类型声明
@@ -17,20 +18,17 @@ declare global {
 /**
  * CodeLens 主界面
  *
- * 布局：三栏式
- * - 左侧：文件树浏览器（F-006）
+ * 布局：三栏式（可拖拽分割面板）
+ * - 左侧：文件树浏览器（F-006 增强）
  * - 中间：Monaco Editor 代码编辑区（F-001 + F-002 + F-003）
  * - 右侧：符号大纲面板（F-004）+ 搜索面板（F-005）
- * - 底部：状态栏
+ * - 底部：状态栏（增强）
  *
- * 阶段3新增：
- * - 符号跳转：F12 / Ctrl+Click 跳转到定义
- * - 引用查找：Shift+F12 查找所有引用
- * - 引用结果面板
- *
- * 阶段4新增：
- * - 项目符号搜索：Ctrl+Shift+F 全局搜索
- * - 搜索结果面板 + 点击跳转
+ * 阶段5新增：
+ * - 可拖拽分割面板
+ * - 菜单栏下拉功能
+ * - 主题切换（Ctrl+K Ctrl+T）
+ * - 状态栏增强
  */
 
 interface CursorPosition {
@@ -47,7 +45,23 @@ interface SearchResultItem {
   qualifiedName: string;
 }
 
+/** 下拉菜单项定义 */
+interface DropdownItem {
+  label: string;
+  action: string;
+  shortcut?: string;
+  separator?: boolean;
+  disabled?: boolean;
+}
+
+const MIN_SIDEBAR_WIDTH = 160;
+const MAX_SIDEBAR_WIDTH = 480;
+const DEFAULT_LEFT_WIDTH = 240;
+const DEFAULT_RIGHT_WIDTH = 200;
+
 export default function Home() {
+  const { theme, toggleTheme } = useTheme();
+
   const [currentFile, setCurrentFile] = useState<string | null>(null);
   const [fileContent, setFileContent] = useState<string>('');
   const [language, setLanguage] = useState<string>('cpp');
@@ -67,6 +81,18 @@ export default function Home() {
   const [searchTotalCount, setSearchTotalCount] = useState(0);
   const [searchLoading, setSearchLoading] = useState(false);
   const searchTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // 可拖拽分割面板状态
+  const [leftWidth, setLeftWidth] = useState(DEFAULT_LEFT_WIDTH);
+  const [rightWidth, setRightWidth] = useState(DEFAULT_RIGHT_WIDTH);
+  const [dragTarget, setDragTarget] = useState<'left' | 'right' | null>(null);
+
+  // 下拉菜单状态
+  const [activeMenu, setActiveMenu] = useState<string | null>(null);
+
+  // Ctrl+K Ctrl+T 主题切换快捷键
+  const pendingCtrlKRef = useRef(false);
+  const ctrlKTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const handleFileSelect = async (filePath: string) => {
     setCurrentFile(filePath);
@@ -130,14 +156,12 @@ export default function Home() {
   // 跳转到引用位置（从引用面板点击）
   const handleJumpToRef = useCallback(async (filePath: string, line: number, _col: number) => {
     await handleGoToDefinition(filePath, line, _col);
-    // 跳转后关闭引用面板
     setShowRefs(false);
   }, [handleGoToDefinition]);
 
   // 跳转到搜索结果位置
   const handleJumpToSearchResult = useCallback(async (filePath: string, line: number, col: number) => {
     await handleGoToDefinition(filePath, line, col);
-    // 跳转后关闭搜索面板
     setShowSearch(false);
     setSearchInput('');
     setSearchQuery('');
@@ -153,7 +177,6 @@ export default function Home() {
     try {
       const { invoke } = await import('@tauri-apps/api/core');
 
-      // 先获取光标处的符号名
       const model = (window as any).__MONACO_EDITOR__?.getModel();
       let symbolName = '';
 
@@ -190,7 +213,6 @@ export default function Home() {
   const handleSearchInput = useCallback((value: string) => {
     setSearchInput(value);
 
-    // 清除上一个定时器
     if (searchTimerRef.current) {
       clearTimeout(searchTimerRef.current);
     }
@@ -203,7 +225,6 @@ export default function Home() {
       return;
     }
 
-    // 防抖 200ms
     searchTimerRef.current = setTimeout(async () => {
       setShowSearch(true);
       setSearchLoading(true);
@@ -235,23 +256,161 @@ export default function Home() {
     }, 200);
   }, []);
 
-  // Ctrl+Shift+F 快捷键触发搜索
+  // 拖拽分割条 — 鼠标移动
+  const handleDragMove = useCallback((e: MouseEvent) => {
+    if (!dragTarget) return;
+
+    if (dragTarget === 'left') {
+      const newWidth = Math.max(MIN_SIDEBAR_WIDTH, Math.min(MAX_SIDEBAR_WIDTH, e.clientX));
+      setLeftWidth(newWidth);
+    } else if (dragTarget === 'right') {
+      const newWidth = Math.max(MIN_SIDEBAR_WIDTH, Math.min(MAX_SIDEBAR_WIDTH, window.innerWidth - e.clientX));
+      setRightWidth(newWidth);
+    }
+  }, [dragTarget]);
+
+  // 拖拽分割条 — 鼠标释放
+  const handleDragEnd = useCallback(() => {
+    if (dragTarget) {
+      setDragTarget(null);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    }
+  }, [dragTarget]);
+
+  // 拖拽事件监听
+  useEffect(() => {
+    if (dragTarget) {
+      document.addEventListener('mousemove', handleDragMove);
+      document.addEventListener('mouseup', handleDragEnd);
+      return () => {
+        document.removeEventListener('mousemove', handleDragMove);
+        document.removeEventListener('mouseup', handleDragEnd);
+      };
+    }
+  }, [dragTarget, handleDragMove, handleDragEnd]);
+
+  // 拖拽开始
+  const handleResizeStart = useCallback((target: 'left' | 'right') => {
+    setDragTarget(target);
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  }, []);
+
+  // 双击分割条恢复默认宽度
+  const handleResizeDoubleClick = useCallback((target: 'left' | 'right') => {
+    if (target === 'left') setLeftWidth(DEFAULT_LEFT_WIDTH);
+    else setRightWidth(DEFAULT_RIGHT_WIDTH);
+  }, []);
+
+  // 下拉菜单项处理
+  const handleMenuAction = useCallback((action: string) => {
+    setActiveMenu(null);
+    switch (action) {
+      case 'open-folder': {
+        // 委托给 FileTree 的 handleOpenProject（通过自定义事件）
+        document.dispatchEvent(new CustomEvent('codelens:open-project'));
+        break;
+      }
+      case 'toggle-theme':
+        toggleTheme();
+        break;
+      case 'find-references':
+        triggerFindReferences();
+        break;
+      case 'focus-search': {
+        const input = document.querySelector('.search-input') as HTMLInputElement;
+        if (input) { input.focus(); input.select(); }
+        break;
+      }
+    }
+  }, [toggleTheme, triggerFindReferences]);
+
+  // 全局快捷键
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Ctrl+K Ctrl+T 主题切换
+      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+        e.preventDefault();
+        pendingCtrlKRef.current = true;
+        if (ctrlKTimerRef.current) clearTimeout(ctrlKTimerRef.current);
+        ctrlKTimerRef.current = setTimeout(() => { pendingCtrlKRef.current = false; }, 300);
+        return;
+      }
+      if (pendingCtrlKRef.current && e.key === 't') {
+        e.preventDefault();
+        toggleTheme();
+        pendingCtrlKRef.current = false;
+        return;
+      }
+
+      // Ctrl+Shift+F 搜索
       if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'F') {
         e.preventDefault();
-        // 聚焦搜索输入框
         const input = document.querySelector('.search-input') as HTMLInputElement;
-        if (input) {
-          input.focus();
-          input.select();
-        }
+        if (input) { input.focus(); input.select(); }
+      }
+
+      // ESC 关闭菜单
+      if (e.key === 'Escape') {
+        setActiveMenu(null);
+      }
+    };
+
+    // 点击菜单外关闭下拉菜单
+    const handleClickOutside = (e: MouseEvent) => {
+      if (activeMenu && !(e.target as Element).closest('.menu-dropdown')) {
+        setActiveMenu(null);
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [activeMenu, toggleTheme]);
+
+  /** 下拉菜单项配置 */
+  const menuConfig: Record<string, DropdownItem[]> = {
+    file: [
+      { label: '打开文件夹', action: 'open-folder', shortcut: 'Ctrl+O' },
+    ],
+    edit: [],
+    view: [
+      { label: '切换主题', action: 'toggle-theme', shortcut: 'Ctrl+K Ctrl+T' },
+    ],
+    goto: [
+      { label: '查找引用', action: 'find-references', shortcut: 'Shift+F12' },
+      { label: '搜索符号', action: 'focus-search', shortcut: 'Ctrl+Shift+F' },
+    ],
+    help: [
+      { label: '关于 CodeLens', action: 'about' },
+    ],
+  };
+
+  /** 渲染菜单栏下拉菜单 */
+  const renderDropdown = (menuKey: string, items: DropdownItem[]) => {
+    if (items.length === 0) return null;
+
+    return (
+      <div className="menu-dropdown">
+        {items.map((item) => (
+          <div key={item.action}>
+            {item.separator && <div className="menu-dropdown-separator" />}
+            <div
+              className={`menu-dropdown-item ${item.disabled ? 'menu-dropdown-disabled' : ''}`}
+              onClick={() => handleMenuAction(item.action)}
+            >
+              <span>{item.label}</span>
+              {item.shortcut && <span className="menu-dropdown-shortcut">{item.shortcut}</span>}
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  };
 
   return (
     <>
@@ -264,18 +423,30 @@ export default function Home() {
       <div className="app-container">
         {/* 菜单栏 + 搜索栏 */}
         <header className="menu-bar">
-          <span className="menu-item">文件(F)</span>
-          <span className="menu-item">编辑(E)</span>
-          <span className="menu-item">查看(V)</span>
-          <span
-            className="menu-item"
-            style={{ cursor: 'pointer' }}
-            onClick={triggerFindReferences}
-            title="查找引用 (Shift+F12)"
-          >
-            转到(G)
-          </span>
-          <span className="menu-item">帮助(H)</span>
+          <nav className="menu-bar-items">
+            {[
+              { key: 'file', label: '文件(F)' },
+              { key: 'edit', label: '编辑(E)' },
+              { key: 'view', label: '查看(V)' },
+              { key: 'goto', label: '转到(G)' },
+              { key: 'help', label: '帮助(H)' },
+            ].map(({ key, label }) => {
+              const items = menuConfig[key] || [];
+              const hasDropdown = items.length > 0;
+              return (
+                <div
+                  key={key}
+                  className="menu-item-wrapper"
+                  onClick={() => hasDropdown && setActiveMenu(activeMenu === key ? null : key)}
+                >
+                  <span className={`menu-item ${activeMenu === key ? 'menu-item-active' : ''}`}>
+                    {label}
+                  </span>
+                  {activeMenu === key && hasDropdown && renderDropdown(key, items)}
+                </div>
+              );
+            })}
+          </nav>
 
           {/* 搜索栏（F-005） */}
           <div className="search-bar">
@@ -303,7 +474,7 @@ export default function Home() {
                   setShowSearch(false);
                 }}
               >
-                ×
+                &times;
               </button>
             )}
           </div>
@@ -312,9 +483,16 @@ export default function Home() {
         {/* 主内容区 */}
         <main className="main-content" style={{ position: 'relative' }}>
           {/* 左侧：文件树 */}
-          <aside className="sidebar-left">
+          <aside className="sidebar-left" style={{ width: leftWidth, minWidth: leftWidth }}>
             <FileTree onFileSelect={handleFileSelect} />
           </aside>
+
+          {/* 左侧分割条 */}
+          <div
+            className={`resize-handle ${dragTarget === 'left' ? 'resize-handle-active' : ''}`}
+            onMouseDown={() => handleResizeStart('left')}
+            onDoubleClick={() => handleResizeDoubleClick('left')}
+          />
 
           {/* 中间：编辑器 */}
           <section className="editor-area">
@@ -355,12 +533,18 @@ export default function Home() {
             )}
           </section>
 
+          {/* 右侧分割条 */}
+          <div
+            className={`resize-handle ${dragTarget === 'right' ? 'resize-handle-active' : ''}`}
+            onMouseDown={() => handleResizeStart('right')}
+            onDoubleClick={() => handleResizeDoubleClick('right')}
+          />
+
           {/* 右侧：符号大纲 */}
-          <aside className="sidebar-right">
+          <aside className="sidebar-right" style={{ width: rightWidth, minWidth: rightWidth }}>
             <SymbolOutline
               filePath={currentFile}
               onSymbolClick={(line) => {
-                // 跳转到编辑器对应行：通过 Monaco Editor API 实现行滚动
                 const editor = (window as any).__MONACO_EDITOR__;
                 if (editor) {
                   editor.revealLineInCenter(line + 1);
@@ -383,12 +567,19 @@ export default function Home() {
           <span className="status-item">UTF-8</span>
           <span className="status-item">LF</span>
           <span
+            className="status-item status-theme-toggle"
+            onClick={toggleTheme}
+            title={`切换主题 (Ctrl+K Ctrl+T) — 当前: ${theme === 'dark' ? '深色' : '浅色'}`}
+          >
+            {theme === 'dark' ? '🌙' : '☀️'}
+          </span>
+          <span
             className="status-item"
             style={{ cursor: 'pointer' }}
             onClick={triggerFindReferences}
             title="Shift+F12 查找引用"
           >
-            CodeLens v0.4.0
+            CodeLens v0.5.0
           </span>
         </footer>
       </div>

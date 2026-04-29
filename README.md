@@ -53,7 +53,10 @@ CodeLens/
 │   │   └── _app.tsx         # 应用入口
 │   ├── components/
 │   │   ├── Editor.tsx       # Monaco Editor + 语义高亮 + 符号跳转 + 引用查找
-│   │   ├── FileTree.tsx     # 文件树组件
+│   │   ├── FileTree.tsx     # 文件树组件（搜索过滤 + 右键菜单 + 文件图标）
+│   │   ├── FileIcon.tsx     # 文件类型图标映射
+│   │   ├── ContextMenu.tsx  # 通用右键上下文菜单
+│   │   ├── ThemeProvider.tsx # 主题上下文（深色/浅色切换）
 │   │   ├── SymbolOutline.tsx # 符号大纲组件（IPC + 嵌套渲染）
 │   │   ├── SearchPanel.tsx  # 符号搜索结果面板
 │   │   └── ReferencesPanel.tsx # 引用查找结果面板
@@ -63,6 +66,7 @@ CodeLens/
 ├── docs/                    # 文档
 │   ├── DESIGN_F004_OUTLINE.md # F-004 符号大纲设计文档
 │   ├── DESIGN_F005_INDEX.md   # F-005 符号索引设计文档
+│   ├── DESIGN_PHASE5.md       # 阶段5 UI完善设计文档
 │   ├── TEST_REPORT_PHASE2.md # 阶段2 测试报告
 │   ├── TEST_REPORT_PHASE3.md # 阶段3 测试报告
 │   └── TEST_REPORT_PHASE4.md # 阶段4 测试报告
@@ -125,7 +129,7 @@ cargo tauri build
 | F-003 | 引用查找 | P0 | ✅ 阶段3完成 |
 | F-004 | 符号大纲 | P1 | ✅ 阶段4完成 |
 | F-005 | 项目符号索引 | P1 | ✅ 阶段4完成 |
-| F-006 | 文件树浏览器 | P0 | 🏗️ 阶段5 |
+| F-006 | 文件树浏览器 | P0 | ✅ 阶段5完成 |
 
 ## 快捷键
 
@@ -136,6 +140,7 @@ cargo tauri build
 | 查找引用 | Shift+F12 | 显示引用列表 |
 | 符号搜索 | Ctrl+Shift+F | 搜索项目符号 |
 | 关闭面板 | Escape | 关闭引用面板/搜索面板等弹出层 |
+| 切换主题 | Ctrl+K Ctrl+T | 深色 ↔ 浅色主题 |
 
 ## 阶段开发记录
 
@@ -207,9 +212,30 @@ cargo tauri build
 - F-004/F-005 设计文档 + 阶段4测试报告
 - 已知限制：索引仅存内存（无 SQLite 持久化），Sidecar 进程重启后需重建
 
-### 阶段5：UI 完善 🏗️
+### 阶段5：UI 完善 ✅
 
-计划内容：文件树浏览器（F-006）、主题切换
+**提交**：`feat/f006-file-tree` 分支（7 个原子提交）
+**标签**：`v0.5.0-beta`
+**内容**：
+- F-006 文件树浏览器增强：
+  - 重写 `FileTree.tsx`：搜索过滤（300ms 防抖）、右键上下文菜单、文件类型图标
+  - 新增 `FileIcon.tsx`：15+ 扩展名图标映射（CSS 徽标方案，无外部依赖）
+  - 新增 `ContextMenu.tsx`：通用右键菜单组件（视口边界修正）
+  - 目录内排序（目录优先 → 隐藏文件排末尾 → 字母序）
+- 后端 `read_directory` 增加符号链接过滤（`symlink_metadata`）
+- 主题切换：
+  - 新增 `ThemeProvider.tsx`：React Context + localStorage 持久化
+  - 浅色主题 15 个 CSS 变量（`[data-theme="light"]`）
+  - Monaco Editor `codelens-light` 浅色主题定义
+  - Ctrl+K Ctrl+T 快捷键 + 状态栏主题切换按钮
+  - 300ms 渐变过渡动画
+- 界面布局完善：
+  - 可拖拽分割面板（左侧 + 右侧，160~480px 范围）
+  - 双击分割条恢复默认宽度
+  - 菜单栏下拉功能化（文件/查看/转到/帮助）
+  - 状态栏增强（主题切换按钮 + 版本号 v0.5.0）
+- 前端 + Rust 编译验证通过
+- 零新增 npm 依赖（所有 UI 通过原生 React + CSS 实现）
 
 ## JSON-RPC 方法清单
 
