@@ -35,7 +35,7 @@ CodeLens/
 │   │   ├── main.cpp         # Sidecar 入口 + 方法注册
 │   │   ├── json_rpc.cpp     # JSON-RPC 实现
 │   │   ├── parser.cpp       # Tree-sitter 解析服务实现
-│   │   ├── symbol.cpp       # 符号服务实现（F-002 + F-003）
+│   │   ├── symbol.cpp       # 符号服务实现（F-002 + F-003 + F-004 + F-005）
 │   │   └── indexer.cpp      # 索引服务（占位）
 │   └── tests/
 │       ├── test_parser.cpp  # ParserService 单元测试
@@ -54,14 +54,18 @@ CodeLens/
 │   ├── components/
 │   │   ├── Editor.tsx       # Monaco Editor + 语义高亮 + 符号跳转 + 引用查找
 │   │   ├── FileTree.tsx     # 文件树组件
-│   │   ├── SymbolOutline.tsx # 符号大纲组件
+│   │   ├── SymbolOutline.tsx # 符号大纲组件（IPC + 嵌套渲染）
+│   │   ├── SearchPanel.tsx  # 符号搜索结果面板
 │   │   └── ReferencesPanel.tsx # 引用查找结果面板
 │   └── styles/
 │       └── globals.css      # 全局样式
 │
 ├── docs/                    # 文档
+│   ├── DESIGN_F004_OUTLINE.md # F-004 符号大纲设计文档
+│   ├── DESIGN_F005_INDEX.md   # F-005 符号索引设计文档
 │   ├── TEST_REPORT_PHASE2.md # 阶段2 测试报告
-│   └── TEST_REPORT_PHASE3.md # 阶段3 测试报告
+│   ├── TEST_REPORT_PHASE3.md # 阶段3 测试报告
+│   └── TEST_REPORT_PHASE4.md # 阶段4 测试报告
 ├── data/                    # SQLite 数据库（运行时生成）
 ├── .gitignore
 ├── REQUIREMENTS.md          # 需求规格文档
@@ -119,8 +123,8 @@ cargo tauri build
 | F-001 | 代码高亮 | P0 | ✅ 阶段2完成 |
 | F-002 | 符号跳转 | P0 | ✅ 阶段3完成 |
 | F-003 | 引用查找 | P0 | ✅ 阶段3完成 |
-| F-004 | 符号大纲 | P1 | 🏗️ 阶段4 |
-| F-005 | 项目符号索引 | P1 | 🏗️ 阶段4 |
+| F-004 | 符号大纲 | P1 | ✅ 阶段4完成 |
+| F-005 | 项目符号索引 | P1 | ✅ 阶段4完成 |
 | F-006 | 文件树浏览器 | P0 | 🏗️ 阶段5 |
 
 ## 快捷键
@@ -130,8 +134,8 @@ cargo tauri build
 | 打开文件 | Ctrl+O | 系统文件选择器 |
 | 符号跳转 | F12 或 Ctrl+Click | 跳转到定义 |
 | 查找引用 | Shift+F12 | 显示引用列表 |
-| 符号搜索 | Ctrl+T | 搜索项目符号 |
-| 关闭面板 | Escape | 关闭引用面板等弹出层 |
+| 符号搜索 | Ctrl+Shift+F | 搜索项目符号 |
+| 关闭面板 | Escape | 关闭引用面板/搜索面板等弹出层 |
 
 ## 阶段开发记录
 
@@ -183,9 +187,25 @@ cargo tauri build
 - Google Test 单元测试（7 个用例）+ 14 个设计验证项
 - 详细测试报告
 
-### 阶段4：索引与搜索 🏗️
+### 阶段4：索引与搜索 ✅
 
-计划内容：符号大纲（F-004）、项目符号索引（F-005）
+**提交**：`feat/f004-f005-index-search` 分支（2 个提交）
+**标签**：`v0.4.0`
+**内容**：
+- 实现文档符号大纲（F-004）：
+  - C++ Sidecar `textDocument/outline` JSON-RPC 方法（基于栈的嵌套树构建算法）
+  - Tauri `sidecar_document_outline` IPC 命令
+  - 前端 `SymbolOutline.tsx` 完整组件（IPC 调用 + 嵌套渲染 + 展开/折叠 + 点击跳转）
+- 实现项目符号搜索（F-005）：
+  - C++ Sidecar `symbol/search` JSON-RPC 方法（前缀匹配 + 子串匹配，大小写不敏感，去重排序）
+  - C++ `SymbolService::searchSymbols()` 方法（双策略搜索）
+  - Tauri `sidecar_search_symbols` IPC 命令
+  - 前端 `SearchPanel.tsx` 搜索结果面板（键盘导航 + 符号类型图标/颜色）
+  - 菜单栏搜索框 + Ctrl+Shift+F 快捷键 + 200ms 防抖
+- 三端编译验证通过（C++ Release / Rust cargo check / Next.js build）
+- E2E 功能测试 24 项全部通过
+- F-004/F-005 设计文档 + 阶段4测试报告
+- 已知限制：索引仅存内存（无 SQLite 持久化），Sidecar 进程重启后需重建
 
 ### 阶段5：UI 完善 🏗️
 
@@ -210,13 +230,8 @@ cargo tauri build
 | `textDocument/references` | 3 | 引用查找 |
 | `symbol/index` | 3 | 构建项目符号索引 |
 | `symbol/extract` | 3 | 提取单文件符号 |
-
-### 待实现
-
-| 方法 | 阶段 | 描述 |
-|------|------|------|
-| `textDocument/outline` | 4 | 符号大纲 |
-| `workspace/symbol` | 4 | 项目符号搜索 |
+| `textDocument/outline` | 4 | 文档符号大纲（嵌套树结构） |
+| `symbol/search` | 4 | 项目符号搜索（前缀+子串匹配） |
 
 ## Git 工作流
 
