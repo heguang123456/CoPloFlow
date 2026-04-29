@@ -1,13 +1,18 @@
 import type { AppProps } from 'next/app';
 import '@/styles/globals.css';
+import ThemeProvider from '@/components/ThemeProvider';
 
 /**
  * CodeLens 应用入口
  *
  * 全局配置：
  * - 引入全局样式
- * - 后续在此添加全局状态 Provider（如 ThemeContext、ProjectContext）
+ * - ThemeProvider 包裹全局主题上下文
  */
 export default function App({ Component, pageProps }: AppProps) {
-  return <Component {...pageProps} />;
+  return (
+    <ThemeProvider>
+      <Component {...pageProps} />
+    </ThemeProvider>
+  );
 }
