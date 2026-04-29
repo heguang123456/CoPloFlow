@@ -5,6 +5,57 @@
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
+## [0.5.0-beta] - 2026-04-29
+
+### 新增 (Added)
+
+#### 前端 - 文件树浏览器增强（F-006）
+- 重写 `FileTree.tsx`：
+  - 搜索过滤功能（300ms 防抖，输入 >= 2 字符触发）
+  - 右键上下文菜单（打开文件、复制路径、复制相对路径、刷新目录）
+  - 文件类型图标集成（FileIcon 组件）
+  - 目录内排序（目录优先 → 隐藏文件排末尾 → 字母序）
+  - 内嵌搜索框 + 清除按钮
+- 新增 `FileIcon.tsx` — 文件类型图标映射组件：
+  - 支持 15+ 文件扩展名（C++/C/Rust/Python/JS/TS/Go/Config/CMake/Doc）
+  - 特殊文件名匹配（CMakeLists.txt, Makefile, Dockerfile 等）
+  - CSS 徽标方案（无外部图标库依赖）
+- 新增 `ContextMenu.tsx` — 通用右键上下文菜单：
+  - 视口边界修正（防止溢出）
+  - ESC 关闭 + 点击外部关闭
+  - 分隔线支持
+
+#### 前端 - 主题切换
+- 新增 `ThemeProvider.tsx`：
+  - React Context 主题管理（深色/浅色）
+  - `localStorage` 持久化用户偏好
+  - 与 Monaco Editor 主题联动
+- 浅色主题 CSS 变量（`[data-theme="light"]`）：15 个变量覆盖
+- Monaco Editor `codelens-light` 浅色主题定义
+- 主题切换快捷键：`Ctrl+K Ctrl+T`
+- 状态栏主题切换按钮（🌙/☀️ 图标）
+- 300ms 渐变过渡动画
+
+#### 前端 - 界面布局完善
+- 可拖拽分割面板（左侧 160~480px，右侧 160~480px）
+- 双击分割条恢复默认宽度
+- 菜单栏下拉功能化（文件/编辑/查看/转到/帮助）
+- 状态栏增强（主题切换 + 版本号 v0.5.0）
+
+#### 后端
+- `read_directory` 增加符号链接过滤（`symlink_metadata` 检测并跳过）
+
+#### 文档
+- 新增 `docs/DESIGN_PHASE5.md` — 阶段5 UI完善设计文档（12 章节）
+
+### 变更 (Changed)
+- `FileTree.tsx` — 从 158 行基础版本重写为 ~270 行增强版本
+- `Editor.tsx` — 集成 ThemeProvider，新增 `codelens-light` 主题定义
+- `index.tsx` — 从 398 行扩展，集成拖拽面板、菜单栏、状态栏增强
+- `_app.tsx` — 包裹 ThemeProvider
+- `globals.css` — 新增浅色主题变量、分割条、下拉菜单、文件图标、过渡动画样式
+- `lib.rs` — `read_directory` 使用 `symlink_metadata` 替代 `file_type`
+
 ## [0.4.0] - 2026-04-29
 
 ### 新增 (Added)

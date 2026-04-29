@@ -1,6 +1,7 @@
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useContext } from 'react';
 import Editor, { OnMount } from '@monaco-editor/react';
 import type { editor as MonacoEditor } from 'monaco-editor';
+import { useTheme } from './ThemeProvider';
 
 // 扩展 Window 类型声明
 declare global {
@@ -272,6 +273,7 @@ export default function CodeEditorView({
   const monacoRef = useRef<any>(null);
   const decorationsRef = useRef<string[]>([]);
   const highlightEnabledRef = useRef(false);
+  const { theme } = useTheme();
 
   // 将当前文件路径存到 window 上，供 Provider 使用
   useEffect(() => {
@@ -347,6 +349,35 @@ export default function CodeEditorView({
     });
     monaco.editor.setTheme('codelens-dark');
 
+    // 定义自定义浅色主题
+    monaco.editor.defineTheme('codelens-light', {
+      base: 'vs',
+      inherit: true,
+      rules: [
+        { token: 'comment', foreground: '008000', fontStyle: 'italic' },
+        { token: 'keyword', foreground: '0000FF' },
+        { token: 'keyword.preprocessor', foreground: 'AF00DB' },
+        { token: 'keyword.type', foreground: '267F99' },
+        { token: 'string', foreground: 'A31515' },
+        { token: 'string.escape', foreground: '0070C9' },
+        { token: 'number', foreground: '098658' },
+        { token: 'number.float', foreground: '098658' },
+        { token: 'number.hex', foreground: '098658' },
+        { token: 'constant.language', foreground: '0000FF' },
+        { token: 'type', foreground: '267F99' },
+        { token: 'identifier', foreground: '001080' },
+        { token: 'operator', foreground: '000000' },
+      ],
+      colors: {
+        'editor.background': '#ffffff',
+        'editor.foreground': '#1e1e1e',
+        'editor.lineHighlightBackground': '#f0f0f0',
+        'editor.selectionBackground': '#add6ff',
+        'editorLineNumber.foreground': '#b4b4b4',
+        'editorLineNumber.activeForeground': '#1e1e1e',
+      },
+    });
+
     // 注入语义高亮 CSS 类样式
     const styleSheet = document.createElement('style');
     styleSheet.textContent = `
@@ -373,6 +404,14 @@ export default function CodeEditorView({
     // F12 跳转定义（Monaco 内置的 goToDefinition action 已处理）
     // Shift+F12 查找引用（Monaco 内置的 goToReferences action 已处理）
   }, [onCursorMove]);
+
+  // 监听主题变化，动态切换 Monaco 主题
+  useEffect(() => {
+    if (monacoRef.current) {
+      const monacoTheme = theme === 'dark' ? 'codelens-dark' : 'codelens-light';
+      monacoRef.current.editor.setTheme(monacoTheme);
+    }
+  }, [theme]);
 
   // 当文件内容或路径变化时，请求语义高亮
   useEffect(() => {

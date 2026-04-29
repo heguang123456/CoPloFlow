@@ -37,7 +37,7 @@ pub fn run() {
             sidecar_search_symbols,
         ])
         .setup(|_app| {
-            log::info!("CodeLens 代码阅读器启动 (v0.3.0)");
+            log::info!("CodeLens 代码阅读器启动 (v0.5.0)");
             Ok(())
         })
         .run(tauri::generate_context!())
@@ -54,6 +54,10 @@ fn greet(name: &str) -> String {
 ///
 /// 输入：目录路径
 /// 输出：目录条目列表（名称 + 类型 + 路径）
+///
+/// 过滤规则：
+/// - 符号链接：使用 symlink_metadata 检测并跳过
+/// - 排序：目录优先，然后按名称字母序
 #[tauri::command]
 fn read_directory(path: String) -> Result<Vec<serde_json::Value>, String> {
     let dir = std::path::Path::new(&path);
@@ -67,13 +71,20 @@ fn read_directory(path: String) -> Result<Vec<serde_json::Value>, String> {
     for entry in read_dir {
         let entry = entry.map_err(|e| e.to_string())?;
         let name = entry.file_name().to_string_lossy().to_string();
-        let is_dir = entry.file_type().map(|t| t.is_dir()).unwrap_or(false);
-        let full_path = entry.path().to_string_lossy().to_string();
+        let full_path = entry.path();
+
+        // 使用 symlink_metadata 检测符号链接并跳过
+        let metadata = full_path.symlink_metadata().map_err(|e| e.to_string())?;
+        if metadata.file_type().is_symlink() {
+            continue;
+        }
+
+        let is_dir = metadata.is_dir();
 
         entries.push(serde_json::json!({
             "name": name,
             "isDir": is_dir,
-            "path": full_path,
+            "path": full_path.to_string_lossy().to_string(),
         }));
     }
 
