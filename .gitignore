@@ -29,9 +29,15 @@ sidecar/third_party/
 *.exp
 *.ilk
 
+# Tauri externalBin sidecar（需保留给打包）
+!src-tauri/binaries/codelens-sidecar-*.exe
+
 # --- Tauri ---
 src-tauri/target/
 src-tauri/WixTools/
+
+# --- Monaco 本地文件（构建时由 scripts/copy-monaco.js 自动生成） ---
+frontend/public/monaco/
 
 # --- CodeLens 数据目录 ---
 .codelens/

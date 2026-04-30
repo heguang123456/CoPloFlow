@@ -5,7 +5,8 @@
   "description": "CodeLens 代码阅读器前端",
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "node scripts/copy-monaco.js && next build",
+    "prebuild": "node scripts/copy-monaco.js",
     "start": "next start",
     "lint": "next lint"
   },

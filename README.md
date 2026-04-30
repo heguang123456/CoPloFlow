@@ -18,6 +18,7 @@ CodeLens/
 │   ├── Cargo.toml
 │   ├── tauri.conf.json
 │   ├── capabilities/
+│   ├── binaries/             # Sidecar 可执行文件（Tauri externalBin 打包用）
 │   └── src/
 │       ├── main.rs          # 应用入口
 │       ├── lib.rs           # 命令注册与 Sidecar 进程管理
@@ -48,9 +49,12 @@ CodeLens/
 │   ├── package.json
 │   ├── next.config.js
 │   ├── tsconfig.json
+│   ├── scripts/
+│   │   └── copy-monaco.js   # Monaco 本地文件复制脚本
 │   ├── pages/
 │   │   ├── index.tsx        # 主界面（含引用面板集成）
-│   │   └── _app.tsx         # 应用入口
+│   │   ├── _app.tsx         # 应用入口（ErrorBoundary + ThemeProvider）
+│   │   └── _error.tsx       # 自定义错误页面
 │   ├── components/
 │   │   ├── Editor.tsx       # Monaco Editor + 语义高亮 + 符号跳转 + 引用查找
 │   │   ├── FileTree.tsx     # 文件树组件（搜索过滤 + 右键菜单 + 文件图标）
@@ -67,6 +71,7 @@ CodeLens/
 │   ├── DESIGN_F004_OUTLINE.md # F-004 符号大纲设计文档
 │   ├── DESIGN_F005_INDEX.md   # F-005 符号索引设计文档
 │   ├── DESIGN_PHASE5.md       # 阶段5 UI完善设计文档
+│   ├── OPTIMIZATION.md        # 优化文档（v0.6.0 运行时优化）
 │   ├── TEST_REPORT_PHASE2.md # 阶段2 测试报告
 │   ├── TEST_REPORT_PHASE3.md # 阶段3 测试报告
 │   └── TEST_REPORT_PHASE4.md # 阶段4 测试报告
@@ -236,6 +241,24 @@ cargo tauri build
   - 状态栏增强（主题切换按钮 + 版本号 v0.5.0）
 - 前端 + Rust 编译验证通过
 - 零新增 npm 依赖（所有 UI 通过原生 React + CSS 实现）
+
+### 运行时优化 ✅
+
+**提交**：`fix/runtime-stability` 分支
+**标签**：`v0.6.0-rc1`
+**内容**：
+- **Monaco CDN 兼容性**：`@monaco-editor/react` 从 CDN 加载改为本地文件（构建时复制到 `public/monaco/vs/`），Tauri WebView 离线环境正常工作
+- **Monarch Tokenizer 修复**：移除 `@operatorKeywords` 未定义引用，修复 `codelens-cpp` 语言注册崩溃
+- **Sidecar 打包修复**：配置 `bundle.externalBin`，Tauri 自动将 Sidecar 打包到安装程序中，安装后开箱即用
+- **Sidecar 窗口隐藏**：Windows 子进程添加 `CREATE_NO_WINDOW` 标志，消除符号跳转/引用查找时闪终端窗口
+- **全局快捷键修复**：
+  - Ctrl+K Ctrl+T 改用捕获阶段注册，绕过 Monaco chord 拦截
+  - 补充 Ctrl+O 键盘事件处理
+- **渲染性能优化**：
+  - `cursorPos` 从 `useState` 改为 `useRef` + 直接 DOM 更新，光标移动零 re-render
+  - `editorOptions` 用 `useMemo` 缓存
+  - `CodeEditorView` 用 `React.memo` 包装
+- 优化文档：`docs/OPTIMIZATION.md`
 
 ## JSON-RPC 方法清单
 

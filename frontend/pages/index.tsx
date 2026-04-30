@@ -65,7 +65,10 @@ export default function Home() {
   const [currentFile, setCurrentFile] = useState<string | null>(null);
   const [fileContent, setFileContent] = useState<string>('');
   const [language, setLanguage] = useState<string>('cpp');
-  const [cursorPos, setCursorPos] = useState<CursorPosition>({ line: 1, col: 1 });
+
+  // 光标位置用 ref 而非 state，避免每次光标移动触发整个组件 re-render
+  const cursorPosRef = useRef<CursorPosition>({ line: 1, col: 1 });
+  const statusBarCursorRef = useRef<HTMLElement | null>(null);
 
   // 引用查找状态
   const [showRefs, setShowRefs] = useState(false);
@@ -117,7 +120,11 @@ export default function Home() {
   };
 
   const handleCursorMove = useCallback((line: number, col: number) => {
-    setCursorPos({ line, col });
+    cursorPosRef.current = { line, col };
+    // 直接更新状态栏 DOM，避免 React re-render
+    if (statusBarCursorRef.current) {
+      statusBarCursorRef.current.textContent = `行 ${line}, 列 ${col}`;
+    }
   }, []);
 
   // 跳转到定义：打开目标文件并定位到指定行
@@ -182,8 +189,8 @@ export default function Home() {
 
       if (model) {
         const word = model.getWordAtPosition({
-          lineNumber: cursorPos.line,
-          column: cursorPos.col,
+          lineNumber: cursorPosRef.current.line,
+          column: cursorPosRef.current.col,
         });
         symbolName = word?.word || '';
       }
@@ -207,7 +214,7 @@ export default function Home() {
     } finally {
       setRefsLoading(false);
     }
-  }, [currentFile, cursorPos]);
+  }, [currentFile]);
 
   // 搜索输入处理（防抖 200ms）
   const handleSearchInput = useCallback((value: string) => {
@@ -329,9 +336,19 @@ export default function Home() {
   // 全局快捷键
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Ctrl+O 打开文件夹
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key === 'o') {
+        e.preventDefault();
+        e.stopPropagation();
+        document.dispatchEvent(new CustomEvent('codelens:open-project'));
+        setActiveMenu(null);
+        return;
+      }
+
       // Ctrl+K Ctrl+T 主题切换
       if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
         e.preventDefault();
+        e.stopPropagation();
         pendingCtrlKRef.current = true;
         if (ctrlKTimerRef.current) clearTimeout(ctrlKTimerRef.current);
         ctrlKTimerRef.current = setTimeout(() => { pendingCtrlKRef.current = false; }, 300);
@@ -339,6 +356,7 @@ export default function Home() {
       }
       if (pendingCtrlKRef.current && e.key === 't') {
         e.preventDefault();
+        e.stopPropagation();
         toggleTheme();
         pendingCtrlKRef.current = false;
         return;
@@ -347,6 +365,7 @@ export default function Home() {
       // Ctrl+Shift+F 搜索
       if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'F') {
         e.preventDefault();
+        e.stopPropagation();
         const input = document.querySelector('.search-input') as HTMLInputElement;
         if (input) { input.focus(); input.select(); }
       }
@@ -364,10 +383,11 @@ export default function Home() {
       }
     };
 
-    window.addEventListener('keydown', handleKeyDown);
+    // 使用 capture: true 在捕获阶段拦截，优先于 Monaco 内部快捷键处理
+    window.addEventListener('keydown', handleKeyDown, true);
     document.addEventListener('mousedown', handleClickOutside);
     return () => {
-      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keydown', handleKeyDown, true);
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, [activeMenu, toggleTheme]);
@@ -558,9 +578,9 @@ export default function Home() {
 
         {/* 状态栏 */}
         <footer className="status-bar">
-          <span className="status-item">
+          <span className="status-item" ref={statusBarCursorRef}>
             {currentFile
-              ? `行 ${cursorPos.line}, 列 ${cursorPos.col}`
+              ? `行 ${cursorPosRef.current.line}, 列 ${cursorPosRef.current.col}`
               : '就绪'}
           </span>
           <span className="status-item">{language.toUpperCase()}</span>
