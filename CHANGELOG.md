@@ -5,6 +5,48 @@
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
+## [0.6.0-rc1] - 2026-04-30
+
+### 新增 (Added)
+
+#### 前端 - Monaco 本地加载
+- 新增 `scripts/copy-monaco.js` — 构建前将 Monaco Editor 核心文件（121 文件，约 15MB）从 `node_modules` 复制到 `public/monaco/vs/`
+- `Editor.tsx` 中调用 `loader.config()` 覆盖 CDN 路径为本地路径（`${window.location.origin}/monaco/vs`）
+- 新增 `pages/_error.tsx` — 自定义错误页面，显示真实错误信息和调用栈
+
+#### 前端 - React 错误边界
+- `_app.tsx` 添加 React Error Boundary class component，捕获子组件渲染异常并提供重试按钮
+
+#### 构建工程 - Sidecar 打包
+- `src-tauri/binaries/codelens-sidecar-x86_64-pc-windows-msvc.exe` — Sidecar 可执行文件（带 target triple 后缀）
+- `tauri.conf.json` 添加 `bundle.externalBin: ["binaries/codelens-sidecar"]`
+- Tauri 构建时自动复制 Sidecar 到 `target/release/codelens-sidecar.exe` 并打包到安装程序
+
+#### 文档
+- 新增 `docs/OPTIMIZATION.md` — 优化文档（v0.6.0 运行时优化，6 项优化详细记录 + 后续优化方向）
+
+### 变更 (Changed)
+
+#### 前端 - Monarch Tokenizer 修复
+- `Editor.tsx` — 移除未定义的 `@operatorKeywords` 引用，符号规则简化为直接标记 `operator`
+
+#### 前端 - 快捷键修复
+- `index.tsx` — 全局 `keydown` 监听器改用 `capture: true` 捕获阶段注册，绕过 Monaco 内部快捷键拦截
+- `index.tsx` — 新增 Ctrl+O 键盘事件处理（触发 `codelens:open-project` 自定义事件）
+- Ctrl+K Ctrl+T / Ctrl+O / Ctrl+Shift+F 均添加 `stopPropagation()` 阻止事件传播到 Monaco
+
+#### 前端 - 渲染性能优化
+- `index.tsx` — `cursorPos` 从 `useState` 改为 `useRef` + 直接 DOM 更新状态栏，光标移动零 React re-render
+- `Editor.tsx` — `editorOptions` 用 `useMemo([])` 缓存，避免每次渲染创建新对象引用
+- `Editor.tsx` — `CodeEditorView` 组件用 `React.memo()` 包装，props 不变时跳过渲染
+
+#### 后端 - Sidecar 窗口隐藏
+- `lib.rs` — `send_sidecar_request` 添加 Windows `CREATE_NO_WINDOW`（`0x08000000`）创建标志，消除子进程闪终端窗口
+
+#### 配置
+- `.gitignore` — 添加 `!src-tauri/binaries/codelens-sidecar-*.exe` 例外规则
+- `package.json` — build 和 prebuild 脚本前置执行 `node scripts/copy-monaco.js`
+
 ## [0.5.0-beta] - 2026-04-29
 
 ### 新增 (Added)

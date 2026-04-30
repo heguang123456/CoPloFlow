@@ -1,7 +1,15 @@
-import { useEffect, useRef, useCallback, useContext } from 'react';
-import Editor, { OnMount } from '@monaco-editor/react';
+import { useEffect, useRef, useCallback, useMemo, memo } from 'react';
+import Editor, { OnMount, loader } from '@monaco-editor/react';
 import type { editor as MonacoEditor } from 'monaco-editor';
 import { useTheme } from './ThemeProvider';
+
+// 配置 Monaco 使用本地文件而非 CDN（Tauri WebView 兼容）
+// @ts-ignore
+loader.config({
+  paths: {
+    vs: `${typeof window !== 'undefined' ? window.location.origin : ''}/monaco/vs`,
+  },
+});
 
 // 扩展 Window 类型声明
 declare global {
@@ -111,12 +119,7 @@ function registerCodelensLanguage(monaco: any) {
         }],
         [/\/\/.*$/, 'comment'],
         [/\/\*/, 'comment', '@comment'],
-        [/@symbols/, {
-          cases: {
-            '@operatorKeywords': 'operator.keyword',
-            '@default': 'operator',
-          },
-        }],
+        [/@symbols/, 'operator'],
       ],
       string_double: [
         [/[^\\"]+/, 'string'],
@@ -261,7 +264,7 @@ function highlightRangesToDecorations(
  * 阶段2：Tree-sitter 语义高亮
  * 阶段3：符号跳转（F12/Ctrl+Click）+ 引用查找（Shift+F12）
  */
-export default function CodeEditorView({
+export default memo(function CodeEditorView({
   filePath,
   content,
   language,
@@ -430,7 +433,7 @@ export default function CodeEditorView({
     }
   }, [filePath, content, applySemanticHighlight]);
 
-  const editorOptions = {
+  const editorOptions = useMemo(() => ({
     fontSize: 14,
     fontFamily: 'Consolas, "Courier New", monospace',
     minimap: { enabled: true },
@@ -447,7 +450,7 @@ export default function CodeEditorView({
     quickSuggestions: false,
     suggestOnTriggerCharacters: false,
     parameterHints: { enabled: false },
-  };
+  }), []);
 
   return (
     <div className="editor-container">
@@ -477,4 +480,4 @@ export default function CodeEditorView({
       </div>
     </div>
   );
-}
+});

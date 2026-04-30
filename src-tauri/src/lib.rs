@@ -252,6 +252,11 @@ fn sidecar_search_symbols(query: String, limit: Option<u32>) -> Result<serde_jso
 // ============================================================
 
 /// 查找 Sidecar 可执行文件路径
+///
+/// 搜索策略（按优先级）：
+/// 1. Tauri externalBin 打包路径：exe 同级的 codelens-sidecar.exe
+/// 2. 开发环境路径：./sidecar/build/{Release,Debug}/codelens-sidecar.exe
+/// 3. 旧版兼容路径：exe 目录下的 sidecar/ 子目录
 fn find_sidecar_path() -> Result<String, String> {
     let exe_dir = std::env::current_exe()
         .map_err(|e| format!("无法获取可执行文件路径: {}", e))?
@@ -260,10 +265,13 @@ fn find_sidecar_path() -> Result<String, String> {
         .unwrap_or_default();
 
     let candidates = vec![
+        // Tauri externalBin 打包后的标准路径
         exe_dir.join("codelens-sidecar.exe"),
-        exe_dir.join("sidecar").join("codelens-sidecar.exe"),
+        // 开发环境相对路径
         std::path::PathBuf::from("./sidecar/build/Release/codelens-sidecar.exe"),
         std::path::PathBuf::from("./sidecar/build/Debug/codelens-sidecar.exe"),
+        // 旧版兼容
+        exe_dir.join("sidecar").join("codelens-sidecar.exe"),
         std::path::PathBuf::from("./target/release/codelens-sidecar.exe"),
         std::path::PathBuf::from("./target/debug/codelens-sidecar.exe"),
     ];
@@ -292,10 +300,21 @@ fn send_sidecar_request(
     use std::process::{Command, Stdio};
     use std::io::{Write, Read, BufRead};
 
-    let mut child = Command::new(sidecar_path)
+    let mut command = Command::new(sidecar_path);
+    command
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::null())
+        .stderr(Stdio::null());
+
+    // Windows: 防止 sidecar 进程创建可见的控制台窗口
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        command.creation_flags(CREATE_NO_WINDOW);
+    }
+
+    let mut child = command
         .spawn()
         .map_err(|e| format!("无法启动 Sidecar: {}", e))?;
 
