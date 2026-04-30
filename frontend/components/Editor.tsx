@@ -63,6 +63,23 @@ const SCOPE_TO_TOKEN: Record<string, string[]> = {
 };
 
 /**
+ * 语义高亮缓存（OPT-008）
+ *
+ * key: filePath + content 长度 + 前 256 字符（简单 hash）
+ * value: Monaco decorations 数组
+ *
+ * 适用于只读阅读器场景。如果用户未来编辑文件内容，
+ * 需要配合 content hash 或 mtime 做失效判断。
+ */
+const highlightCache = new Map<string, MonacoEditor.IModelDeltaDecoration[]>();
+
+/** 生成缓存 key：filePath + 内容长度 + 前 256 字符 */
+function getCacheKey(filePath: string, content: string): string {
+  const prefix = content.substring(0, 256);
+  return `${filePath}|${content.length}|${prefix}`;
+}
+
+/**
  * CodeLens 自定义语义高亮语言定义
  */
 function registerCodelensLanguage(monaco: any) {
@@ -293,6 +310,19 @@ export default memo(function CodeEditorView({
   ) => {
     if (!fileContent || !filePathStr) return;
 
+    const cacheKey = getCacheKey(filePathStr, fileContent);
+
+    // OPT-008: 检查缓存命中
+    const cached = highlightCache.get(cacheKey);
+    if (cached) {
+      if (decorationsRef.current.length > 0) {
+        editor.deltaDecorations(decorationsRef.current, []);
+      }
+      decorationsRef.current = editor.deltaDecorations([], cached);
+      highlightEnabledRef.current = true;
+      return;
+    }
+
     try {
       const { invoke } = await import('@tauri-apps/api/core');
       const result = await invoke<any>('sidecar_highlight', {
@@ -307,6 +337,17 @@ export default memo(function CodeEditorView({
           }
           decorationsRef.current = editor.deltaDecorations([], decorations);
           highlightEnabledRef.current = true;
+
+          // OPT-008: 写入缓存
+          highlightCache.set(cacheKey, decorations);
+
+          // 缓存大小限制：超过 200 个文件时清理最旧的一半
+          if (highlightCache.size > 200) {
+            const keys = Array.from(highlightCache.keys());
+            for (let i = 0; i < 100 && i < keys.length; i++) {
+              highlightCache.delete(keys[i]);
+            }
+          }
         }
       }
     } catch (err) {

@@ -6,404 +6,403 @@
 
 | 项目 | 信息 |
 |------|------|
-| 文档版本 | v1.0 |
+| 文档版本 | v2.0 |
 | 创建日期 | 2026-04-30 |
-| 适用版本 | v0.6.0-rc1 |
+| 最后更新 | 2026-04-30 |
+| 适用版本 | v0.7.0 |
 | 参考规范 | REQUIREMENTS.md §5 技术优化方案 |
 
 ---
 
 ## 目录
 
-1. [v0.6.0 优化总览](#1-v060-优化总览)
-2. [OPT-001: Monaco Editor CDN 兼容性修复](#2-opt-001-monaco-editor-cdn-兼容性修复)
-3. [OPT-002: Monarch Tokenizer 规则修复](#3-opt-002-monarch-tokenizer-规则修复)
-4. [OPT-003: Sidecar 进程打包与分发](#4-opt-003-sidecar-进程打包与分发)
-5. [OPT-004: Sidecar 子进程窗口隐藏](#5-opt-004-sidecar-子进程窗口隐藏)
-6. [OPT-005: 全局快捷键优先级修复](#6-opt-005-全局快捷键优先级修复)
-7. [OPT-006: Editor 组件渲染性能优化](#7-opt-006-editor-组件渲染性能优化)
-8. [优化效果总结](#8-优化效果总结)
-9. [后续优化方向](#9-后续优化方向)
+1. [v0.7.0 优化总览](#1-v070-优化总览)
+2. [OPT-007: Sidecar 常驻进程 + 管道复用](#2-opt-007-sidecar-常驻进程--管道复用)
+3. [OPT-008: 语义高亮结果缓存](#3-opt-008-语义高亮结果缓存)
+4. [OPT-009: 跨文件引用查找修复](#4-opt-009-跨文件引用查找修复)
+5. [OPT-010: Ctrl+O 已打开文件夹时无法切换项目](#5-opt-010-ctrlo-已打开文件夹时无法切换项目)
+6. [v0.7.0 优化效果总结](#6-v070-优化效果总结)
+7. [v0.6.0 历史优化记录](#7-v060-历史优化记录)
+8. [后续优化方向](#8-后续优化方向)
 
 ---
 
-## 1. v0.6.0 优化总览
+## 1. v0.7.0 优化总览
 
-| 优化 ID | 优化名称 | 影响范围 | 严重程度 |
-|---------|---------|---------|---------|
-| OPT-001 | Monaco Editor CDN 兼容性修复 | 前端 | 致命 |
-| OPT-002 | Monarch Tokenizer 规则修复 | 前端 | 致命 |
-| OPT-003 | Sidecar 进程打包与分发 | 构建工程 | 致命 |
-| OPT-004 | Sidecar 子进程窗口隐藏 | 后端 | 高 |
-| OPT-005 | 全局快捷键优先级修复 | 前端 | 中 |
-| OPT-006 | Editor 组件渲染性能优化 | 前端 | 中 |
+| 优化 ID | 优化名称 | 影响范围 | 优先级 |
+|---------|---------|---------|--------|
+| OPT-007 | Sidecar 常驻进程 + 管道复用 | 后端 | 高 |
+| OPT-008 | 语义高亮结果缓存 | 前端 | 高 |
+| OPT-009 | 跨文件引用查找修复 | 全栈 | 高 |
+| OPT-010 | Ctrl+O 已打开文件夹时无法切换项目 | 前端 | 中 |
 
 ---
 
-## 2. OPT-001: Monaco Editor CDN 兼容性修复
+## 2. OPT-007: Sidecar 常驻进程 + 管道复用
 
 ### 问题描述
 
-`@monaco-editor/react` 默认通过 CDN（`cdn.jsdelivr.net`）加载 Monaco Editor 核心文件。Tauri WebView 生产环境中可能无法访问外部 CDN，导致编辑器区域白屏，应用抛出 `Application error: a client-side exception has occurred`。
+v0.6.0 中，每次调用 Sidecar 功能（高亮、跳转、引用、大纲、搜索）都会通过 `Command::new().spawn()` 创建一个新的 Sidecar 进程，请求完成后进程退出。这导致三个严重问题：
+
+1. **性能开销**：Windows 上进程创建/销毁约 10-50ms，高频操作（如连续点击不同文件）时延迟叠加明显
+2. **索引丢失**：每次新进程的 `file_cache_` 和 `symbol_table_` 均为空，跨文件引用查找和符号搜索需要先重建索引，但索引结果随进程退出丢失
+3. **终端闪现**：虽然 OPT-004 已加 `CREATE_NO_WINDOW`，但高频进程创建/销毁仍有轻微视觉干扰
 
 ### 方案设计
 
-将 Monaco Editor 核心文件从 CDN 加载改为本地文件加载。构建前将 `node_modules/monaco-editor/min/vs/` 复制到 `public/monaco/vs/`，运行时从应用本地路径加载。
+将 `send_sidecar_request` 从"每次 spawn 新进程"改为"维护全局常驻 Sidecar 进程"。首次请求时懒启动进程，后续请求复用 stdin/stdout 管道，进程崩溃时自动重启。
 
 ### 关键设计
 
-1. **构建时复制脚本**（`frontend/scripts/copy-monaco.js`）：
-   - 递归复制 `node_modules/monaco-editor/min/vs/`（121 文件，约 15MB）到 `public/monaco/vs/`
-   - Next.js `output: 'export'` 模式会将 `public/` 目录原样输出到 `out/`，Tauri 直接服务该目录
+#### 2.1 全局进程管理结构
 
-2. **运行时路径覆盖**（`Editor.tsx`）：
-   ```
-   loader.config({ paths: { vs: '${window.location.origin}/monaco/vs' } })
-   ```
-   在 Monaco 初始化前覆盖 CDN 路径为本地路径
-
-3. **构建流程集成**（`package.json`）：
-   - `prebuild` 和 `build` 脚本均前置执行 `node scripts/copy-monaco.js`
-   - 确保 `next build` 时 Monaco 文件已在 `public/` 中
-
-4. **错误兜底**：
-   - 新增 `pages/_error.tsx` 自定义错误页面，显示真实错误信息和调用栈
-   - `_app.tsx` 添加 React Error Boundary，捕获子组件渲染异常并提供重试按钮
-
-### 使用技术
-
-- `@monaco-editor/react` 的 `loader.config()` API
-- Node.js `fs.cpSync()` 递归文件复制
-- Next.js 静态导出 + Tauri `frontendDist` 配置
-- React Class Component Error Boundary
-
-### 预期效果
-
-- Tauri WebView 离线环境下 Monaco Editor 正常加载
-- 编辑器初始化时间从 CDN 加载的 1-3s 降低到本地加载的 <100ms
-
----
-
-## 3. OPT-002: Monarch Tokenizer 规则修复
-
-### 问题描述
-
-自定义语言 `codelens-cpp` 的 Monarch tokenizer 中，`@symbols` 规则引用了 `@operatorKeywords`，但该属性从未在 language 对象中定义（仅有 `operators` 数组）。Monarch 引擎严格校验所有 `@` 引用，找不到定义时直接抛出 `the @ match target 'operatorKeywords' is not defined` 异常，导致整个 tokenizer 注册失败。
-
-### 方案设计
-
-移除不存在的 `@operatorKeywords` case 分支，将符号直接标记为 `operator`。
-
-### 关键设计
-
-**修复前**：
 ```
-[/@symbols/, { cases: { '@operatorKeywords': 'operator.keyword', '@default': 'operator' } }]
-```
-
-**修复后**：
-```
-[/@symbols/, 'operator']
-```
-
-**分析**：`@operatorKeywords` 是 Elixir 等 DSL 语言的特性（用于高亮 `and`/`not`/`or` 等作为运算符的关键字），C++ 不存在需要特殊高亮的运算符关键字，所有运算符符号统一标记为 `operator` 即可。
-
-### 使用技术
-
-- Monaco Editor Monarch tokenizer 规范
-- `@` 引用机制（Monarch 通过属性名在 language 对象中查找同名数组进行匹配）
-
-### 预期效果
-
-- 自定义语言 `codelens-cpp` 正常注册，语法高亮功能恢复
-- 运算符符号统一显示为 `operator` 语义颜色
-
----
-
-## 4. OPT-003: Sidecar 进程打包与分发
-
-### 问题描述
-
-`tauri.conf.json` 未配置 `bundle.externalBin`，Tauri 打包安装程序时不包含 C++ Sidecar 可执行文件。安装后应用运行在安装目录（如 `F:\CodeLens\`），而 sidecar 仅存在于开发环境的 `sidecar/build/Release/`，导致所有依赖 Sidecar 的功能（代码高亮、符号跳转、引用查找、符号大纲、符号搜索）全部不可用。
-
-### 方案设计
-
-利用 Tauri 2.0 的 `externalBin` 机制，将 Sidecar 可执行文件作为外部二进制资源打包到安装程序中。
-
-### 关键设计
-
-1. **Tauri externalBin 配置**（`tauri.conf.json`）：
-   ```json
-   "externalBin": ["binaries/codelens-sidecar"]
-   ```
-   Tauri 自动从 `src-tauri/binaries/` 查找带有 target triple 后缀的可执行文件
-
-2. **命名约定**：
-   - 源文件：`src-tauri/binaries/codelens-sidecar-x86_64-pc-windows-msvc.exe`
-   - Target triple 通过 `rustc --print cfg` 获取：`x86_64-pc-windows-msvc`
-   - Tauri 构建时自动复制到 `target/release/codelens-sidecar.exe`（去掉 triple 后缀）
-
-3. **路径查找策略**（`lib.rs` `find_sidecar_path()`）：
-   - 优先级 1：Tauri 标准路径（exe 同级的 `codelens-sidecar.exe`）— 生产环境
-   - 优先级 2：开发环境路径（`./sidecar/build/Release/`）— 开发调试
-   - 优先级 3：兼容路径（exe 子目录、target 目录）
-
-4. **`.gitignore` 例外规则**：
-   ```
-   *.exe              # 全局排除
-   !src-tauri/binaries/codelens-sidecar-*.exe  # 保留 Sidecar binary
-   ```
-
-### 使用技术
-
-- Tauri 2.0 `bundle.externalBin` 配置
-- Windows target triple 命名约定
-- WiX/NSIS 安装包自动资源打包
-- 多路径候选查找策略
-
-### 预期效果
-
-- 安装包自动包含 Sidecar，无需手动复制
-- 所有 Sidecar 依赖功能在安装后立即可用
-
----
-
-## 5. OPT-004: Sidecar 子进程窗口隐藏
-
-### 问题描述
-
-使用符号跳转（F12）或引用查找（Shift+F12）时，会短暂弹出一个黑色终端窗口然后自动关闭。这是因为在 Windows 上通过 `std::process::Command::spawn()` 启动控制台应用程序（如 `codelens-sidecar.exe`）时，默认会为子进程创建一个可见的控制台窗口。
-
-### 方案设计
-
-在 Windows 平台上为子进程设置 `CREATE_NO_WINDOW` 创建标志，阻止控制台窗口的创建。
-
-### 关键设计
-
-**修复前**：
-```
-Command::new(sidecar_path)
-    .stdin(Stdio::piped())
-    .stdout(Stdio::piped())
-    .stderr(Stdio::null())
-    .spawn()
-```
-
-**修复后**：
-```
-let mut command = Command::new(sidecar_path);
-command.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null());
-
-#[cfg(target_os = "windows")]
-{
-    use std::os::windows::process::CommandExt;
-    const CREATE_NO_WINDOW: u32 = 0x08000000;
-    command.creation_flags(CREATE_NO_WINDOW);
+SidecarProcess {
+    child: Child,                                    // 子进程句柄
+    stdin: ChildStdin,                               // stdin 写入管道
+    stdout: BufReader<ChildStdout>,                  // stdout 缓冲读取管道
+    next_id: u64,                                    // 自增请求 ID
 }
-
-command.spawn()
 ```
 
-**分析**：
-- `CREATE_NO_WINDOW`（`0x08000000`）是 Windows `CREATE_PROCESS` API 的标志位，指示系统不为新进程创建控制台窗口
-- 使用 `#[cfg(target_os = "windows")]` 条件编译，不影响 Linux/macOS 构建
-- `main.rs` 中的 `#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]` 仅隐藏主进程窗口，不影响子进程
+- `ChildStdin` 和 `ChildStdout` 在 `spawn()` 时通过 `.take()` 从 `Child` 中取出，生命周期独立于 `Child`
+- `stdout` 使用 `BufReader` 包装，减少系统调用次数
+- `next_id` 自增，每次请求分配唯一 ID
 
-### 使用技术
+#### 2.2 全局单例 + Mutex 保护
 
-- Rust `std::os::windows::process::CommandExt` trait
-- Windows `CREATE_NO_WINDOW` 进程创建标志（`0x08000000`）
-- 条件编译 `#[cfg(target_os = "windows")]`
-
-### 预期效果
-
-- 符号跳转、引用查找等 Sidecar 调用不再闪现终端窗口
-- 用户体验与 VS Code 等现代编辑器一致，后台静默执行
-
----
-
-## 6. OPT-005: 全局快捷键优先级修复
-
-### 问题描述
-
-两个快捷键无法正常触发：
-1. **Ctrl+K Ctrl+T**（主题切换）：Monaco Editor 内部绑定了 Ctrl+K 作为 chord 前缀（用于 Ctrl+K Ctrl+C 注释等），在 DOM 冒泡阶段消费了 Ctrl+K 事件，window 级 keydown 监听器收不到
-2. **Ctrl+O**（打开文件夹）：菜单 label 显示了 Ctrl+O 快捷键提示，但实际未实现键盘事件处理（仅菜单 dropdown 的 click handler 有效）
-
-### 方案设计
-
-将全局快捷键注册从 DOM 冒泡阶段改为捕获阶段（`capture: true`），使事件在到达 Monaco 内部处理器之前被拦截。同时补充 Ctrl+O 的键盘事件处理。
-
-### 关键设计
-
-1. **捕获阶段注册**：
-   ```
-   window.addEventListener('keydown', handler, true)  // capture: true
-   ```
-   事件流：捕获阶段（window → document → ... → target）→ 冒泡阶段（target → ... → window）
-   在捕获阶段注册的 handler 优先于 Monaco 内部的冒泡阶段 handler 执行
-
-2. **事件拦截**：匹配的快捷键调用 `e.preventDefault()` + `e.stopPropagation()` 阻止事件继续传播
-
-3. **Ctrl+O 实现**：触发 `codelens:open-project` 自定义事件，复用已有的文件树打开项目逻辑
-
-### 使用技术
-
-- DOM 事件捕获阶段（Event Capture Phase）
-- `addEventListener` 第三个参数 `capture: true`
-- `stopPropagation()` 阻止事件继续传播
-- CustomEvent 自定义事件
-
-### 预期效果
-
-- Ctrl+K Ctrl+T 主题切换正常工作，不受 Monaco chord 拦截
-- Ctrl+O 打开文件夹功能生效
-- 所有全局快捷键优先于 Monaco 内部快捷键执行
-
----
-
-## 7. OPT-006: Editor 组件渲染性能优化
-
-### 问题描述
-
-用户在使用过程中感知到明显的卡顿感，尤其在光标快速移动时。分析发现：
-
-1. **光标移动触发整棵组件树 re-render**：每次 `onDidChangeCursorPosition` 事件都调用 `setCursorPos()` 更新父组件 state，触发父组件 → 所有子组件（包括 Monaco Editor）的级联 re-render
-2. **editorOptions 对象每次渲染重建**：`editorOptions` 作为普通对象定义在组件体内，每次渲染都创建新引用，Monaco Editor 接收到新的 options prop 后会重新处理配置
-3. **Editor 组件缺少 memo 化**：父组件 re-render 时，即使 Editor 的 props 未变化也会重新执行渲染函数
-
-### 方案设计
-
-三层优化策略：状态降级（ref 替代 state）、值缓存（useMemo）、组件 memo 化（React.memo）。
-
-### 关键设计
-
-#### 7.1 光标位置：useState → useRef + 直接 DOM 更新
-
-**修复前**：
 ```
-const [cursorPos, setCursorPos] = useState({ line: 1, col: 1 });
-// 每次 cursorPos 变化 → re-render 整棵组件树 → Monaco Editor 重新处理
+static SIDECAR: Mutex<Option<SidecarProcess>> = Mutex::new(None);
 ```
 
-**修复后**：
-```
-const cursorPosRef = useRef({ line: 1, col: 1 });
-const statusBarCursorRef = useRef<HTMLElement>(null);
+- 使用 `std::sync::Mutex`（非 tokio Mutex），因为 Tauri command 是同步的
+- `Option<SidecarProcess>` 支持延迟初始化
+- Mutex 保证同一时刻只有一个线程可以与 Sidecar 通信
 
-const handleCursorMove = useCallback((line, col) => {
-    cursorPosRef.current = { line, col };
-    if (statusBarCursorRef.current) {
-        statusBarCursorRef.current.textContent = `行 ${line}, 列 ${col}`;
+#### 2.3 懒启动 + 自动重启
+
+```
+fn ensure_sidecar() -> Result<(), String> {
+    match guard.as_mut() {
+        Some(proc) => {
+            if !proc.is_alive() {
+                *guard = Some(SidecarProcess::spawn()?);
+            }
+        }
+        None => {
+            *guard = Some(SidecarProcess::spawn()?);
+        }
     }
-}, []);
-// 零 React re-render，直接 DOM 更新
+}
 ```
 
-**分析**：状态栏文字更新不需要触发 React 重新渲染，直接操作 DOM 节点的 `textContent` 即可。`cursorPosRef` 在需要读取光标位置时（如引用查找）通过 `.current` 获取最新值。
+- **懒启动**：首次调用 `send_sidecar_request` 时才 spawn 进程
+- **自动重启**：通过 `child.try_wait()` 检测进程是否意外退出，如果退出则重新 spawn
+- **优雅关闭**：`Drop` trait 中先发送 `shutdown` 请求再 `kill`，确保 Sidecar 正常释放资源
 
-#### 7.2 editorOptions：useMemo 缓存
+#### 2.4 自动项目索引
 
-**修复前**：
-```
-const editorOptions = { fontSize: 14, fontFamily: '...', ... };
-// 每次渲染创建新对象引用
-```
+`FileTree.loadProject()` 成功后，自动后台调用 `sidecar_index_project`。由于 Sidecar 常驻，索引结果在进程生命周期内保持，后续的跨文件引用查找和符号搜索可直接使用。
 
-**修复后**：
 ```
-const editorOptions = useMemo(() => ({
-    fontSize: 14, fontFamily: '...', ...
-}), []);
-// 仅创建一次，后续渲染返回同一引用
+// 后台触发（不阻塞 UI）
+invoke('sidecar_index_project', { projectPath: dirPath })
+    .then(result => console.log('索引完成:', result))
+    .catch(err => console.warn('索引失败:', err));
 ```
 
-#### 7.3 CodeEditorView：React.memo 包装
+#### 2.5 命令函数简化
 
-**修复前**：
-```
-export default function CodeEditorView({ ... }: EditorProps) { ... }
-```
+**优化前**：每个命令函数都需要调用 `find_sidecar_path()` + `send_sidecar_request(path, method, params)`
 
-**修复后**：
+**优化后**：`send_sidecar_request(method, params)` 内部自动管理进程，命令函数仅需一行：
+
 ```
-export default memo(function CodeEditorView({ ... }: EditorProps) { ... });
-// props 引用不变时跳过渲染
+fn sidecar_highlight(filepath: String) -> Result<Value, String> {
+    Ok(send_sidecar_request("textDocument/highlight", json!({"filepath": filepath}))?)
+}
 ```
 
 ### 使用技术
 
-- React `useRef` — 可变引用，不触发 re-render
-- React `useMemo` — 值记忆化，依赖不变时返回缓存值
-- React `memo` — 高阶组件，props 浅比较不变时跳过渲染
-- DOM API `textContent` — 直接操作 DOM 更新文本，绕过 React 渲染管线
+- Rust `std::sync::Mutex` — 全局可变状态的线程安全访问
+- Rust `std::process::Child` — 子进程生命周期管理
+- Rust `BufReader<ChildStdout>` — 缓冲管道读取
+- JSON-RPC 2.0 Content-Length 协议 — 管道消息帧格式
+- `Drop` trait — 资源清理和优雅关闭
 
 ### 预期效果
 
-- 光标移动时零 React re-render，消除级联渲染开销
-- Monaco Editor 不因无关 state 变化重新处理配置
-- 大文件 + 快速光标移动场景下卡顿感显著降低
+- Sidecar 功能响应延迟降低 50%+（消除 10-50ms 进程创建开销）
+- 项目索引在 Sidecar 进程生命周期内持久，跨文件引用查找和符号搜索无需重复构建索引
+- 进程意外崩溃时自动重启，提升可靠性
 
 ---
 
-## 8. 优化效果总结
+## 3. OPT-008: 语义高亮结果缓存
+
+### 问题描述
+
+切换回已打开过的文件时，会重新向 Sidecar 请求高亮数据。对于大文件（如 STL 源码），Tree-sitter 解析 + 高亮计算耗时可达数百毫秒，导致明显的切换延迟。作为只读代码阅读器，文件内容不会变化，重复请求是完全冗余的。
+
+### 方案设计
+
+在前端维护模块级 `Map<string, Decoration[]>` 缓存。缓存 key 为 `filePath + contentLength + contentPrefix`，命中时直接使用缓存结果，无需请求 Sidecar。
+
+### 关键设计
+
+#### 3.1 缓存数据结构
+
+```
+// 模块级缓存（跨组件实例共享，但不跨页面刷新）
+const highlightCache = new Map<string, IModelDeltaDecoration[]>();
+
+function getCacheKey(filePath: string, content: string): string {
+    return `${filePath}|${content.length}|${content.substring(0, 256)}`;
+}
+```
+
+- **Key 设计**：`filePath` + `content.length` + 前 256 字符。对于只读阅读器，这三个字段的组合足以唯一标识文件内容
+- **Value**：Monaco `IModelDeltaDecoration[]` 数组，可直接传给 `editor.deltaDecorations()`
+- **生命周期**：模块级变量，随 SPA 页面生命周期存在，刷新页面后清空
+
+#### 3.2 缓存命中逻辑
+
+```
+applySemanticHighlight(editor, monaco, content, filePath) {
+    const cacheKey = getCacheKey(filePath, content);
+
+    // 缓存命中 → 直接应用
+    const cached = highlightCache.get(cacheKey);
+    if (cached) {
+        decorationsRef.current = editor.deltaDecorations([], cached);
+        return;
+    }
+
+    // 缓存未命中 → 请求 Sidecar → 写入缓存
+    const result = await invoke('sidecar_highlight', { filepath });
+    const decorations = highlightRangesToDecorations(result.ranges, monaco);
+    decorationsRef.current = editor.deltaDecorations([], decorations);
+    highlightCache.set(cacheKey, decorations);
+}
+```
+
+#### 3.3 缓存淘汰策略
+
+```
+if (highlightCache.size > 200) {
+    const keys = Array.from(highlightCache.keys());
+    for (let i = 0; i < 100 && i < keys.length; i++) {
+        highlightCache.delete(keys[i]);
+    }
+}
+```
+
+- 简单的 FIFO 淘汰：超过 200 个条目时删除最旧的一半
+- 每个 Decoration 数组约 1-10KB，200 个文件约 200KB-2MB 内存占用，可接受
+
+### 使用技术
+
+- ES6 `Map` — 高效键值缓存
+- Monaco `IModelDeltaDecoration[]` — 可复用的装饰器对象
+- 模块级变量 — 跨组件实例共享的缓存
+
+### 预期效果
+
+- 已访问文件的重新打开高亮延迟从数百毫秒降至 <5ms（纯内存读取 + DOM 操作）
+- 减少 Sidecar 通信次数，降低 CPU 和 I/O 开销
+- 内存占用可控（200 个文件约 200KB-2MB）
+
+---
+
+## 4. OPT-009: 跨文件引用查找修复
+
+### 问题描述
+
+查找引用功能（Shift+F12）对单个文件可以进行高亮显示，但无法对多个文件同时存在的引用进行定位。用户只能看到当前文件中的引用，看不到其他文件中的引用位置。
+
+### 根因分析
+
+v0.6.0 的 Sidecar 架构为"临时进程模式"：
+
+1. 每次功能调用都 spawn 新的 Sidecar 进程
+2. 跨文件引用查找依赖 `SymbolService::findReferences()`，它遍历 `file_cache_` 中所有已缓存的文件
+3. `file_cache_` 的填充需要先调用 `symbol/index` 构建项目索引
+4. 但旧进程在请求完成后退出，新进程的 `file_cache_` 为空
+5. 前端也没有自动触发 `symbol/index`
+
+结果：`findReferences()` 遍历空缓存，只返回当前文件中通过光标位置匹配到的结果（如果有 `filepath` 参数的话），或完全无结果。
+
+### 方案设计
+
+OPT-007（Sidecar 常驻进程）解决了核心问题。配合以下两个改动实现完整的跨文件引用查找：
+
+1. **Sidecar 常驻进程**（OPT-007）：索引结果在进程生命周期内保持
+2. **自动项目索引**：`FileTree.loadProject()` 成功后自动后台触发 `sidecar_index_project`
+
+### 关键设计
+
+#### 4.1 索引触发时机
+
+```
+FileTree.loadProject(dirPath) {
+    // 1. 加载文件树 UI
+    setTreeData(nodes);
+
+    // 2. 后台触发项目索引（不阻塞 UI）
+    invoke('sidecar_index_project', { projectPath: dirPath })
+        .then(result => console.log(`索引完成: ${result.fileCount} 文件, ${result.symbolCount} 符号`))
+        .catch(err => console.warn('索引失败（不影响文件浏览）:', err));
+}
+```
+
+- 索引在项目打开后自动触发，用户无需手动操作
+- 索引为异步后台任务，不阻塞文件树的加载和交互
+- 索引失败不影响文件浏览等基本功能
+
+#### 4.2 跨文件引用查找流程
+
+```
+用户按 Shift+F12
+  → Monaco provideReferences → invoke('sidecar_find_references', { symbolName })
+  → Rust send_sidecar_request("textDocument/references", { symbolName })
+  → Sidecar findReferences() 遍历 file_cache_（已包含项目所有文件的语法树）
+  → 返回所有文件中的引用位置列表
+  → ReferencesPanel 按文件分组显示
+```
+
+### 使用技术
+
+- Sidecar 常驻进程（OPT-007）— 索引持久化
+- Tree-sitter 语法树缓存 — 跨文件 AST 遍历
+- 异步后台索引 — 不阻塞 UI
+
+### 预期效果
+
+- 跨文件引用查找正常工作，显示所有文件中的引用位置
+- 符号搜索（Ctrl+Shift+F）也因索引持久化而立即可用
+- 项目打开后 1-3 秒内索引构建完成，后续请求零延迟
+
+---
+
+## 5. OPT-010: Ctrl+O 已打开文件夹时无法切换项目
+
+### 问题描述
+
+用户使用 Ctrl+O 快捷键时，如果已经打开了文件夹，无法弹出文件夹选择对话框切换到另一个项目。按钮点击方式也存在同样的问题。
+
+### 根因分析
+
+`index.tsx` 中 Ctrl+O 和菜单的"打开文件夹"操作都是通过 `document.dispatchEvent(new CustomEvent('codelens:open-project'))` 实现。但 `FileTree.tsx` 中**没有监听这个自定义事件**——`handleOpenProject` 仅被按钮的 `onClick` 直接调用。
+
+### 方案设计
+
+在 `FileTree` 组件中添加 `useEffect` 监听 `codelens:open-project` 事件，触发时调用 `handleOpenProject`。同时在 `loadProject` 中重置展开状态和搜索状态。
+
+### 关键设计
+
+#### 5.1 事件监听注册
+
+```
+useEffect(() => {
+    const handler = () => handleOpenProject();
+    document.addEventListener('codelens:open-project', handler);
+    return () => document.removeEventListener('codelens:open-project', handler);
+}, []);
+```
+
+- `handleOpenProject` 函数内部会调用 Tauri `open` 对话框，选择后调用 `loadProject`
+- 组件卸载时清理事件监听
+
+#### 5.2 项目切换时状态重置
+
+```
+loadProject(dirPath) {
+    setExpandedKeys(new Set());  // 收起所有展开的目录
+    setSearchTerm('');           // 清空搜索关键词
+    setTreeData(nodes);          // 加载新项目的文件树
+}
+```
+
+- 切换项目时清空之前的展开状态和搜索过滤，避免旧项目状态残留
+
+### 使用技术
+
+- DOM CustomEvent — 跨组件通信
+- `useEffect` + cleanup — 事件监听生命周期管理
+
+### 预期效果
+
+- Ctrl+O 快捷键在任何时候都可以打开文件夹选择对话框
+- 切换项目时文件树、搜索状态、展开状态正确重置
+
+---
+
+## 6. v0.7.0 优化效果总结
 
 | 优化项 | 优化前 | 优化后 | 影响范围 |
 |--------|--------|--------|---------|
-| Monaco 加载 | CDN 依赖，离线白屏 | 本地加载，<100ms | 应用可用性 |
-| Monarch tokenizer | 注册异常崩溃 | 正常工作 | 语法高亮 |
-| Sidecar 打包 | 安装后功能全失 | 自动打包，开箱即用 | 全部 Sidecar 功能 |
-| Sidecar 窗口 | 闪终端窗口 | 后台静默执行 | 用户体验 |
-| Ctrl+K Ctrl+T | Monaco 拦截无响应 | 正常切换主题 | 快捷键 |
-| Ctrl+O | 仅有 label 无功能 | 正常打开文件夹 | 快捷键 |
-| 渲染性能 | 光标移动触发全树 re-render | 零 re-render | 交互流畅度 |
+| Sidecar 通信 | 每次 spawn 新进程（10-50ms 开销） | 常驻进程复用管道（<1ms） | 全部 Sidecar 功能 |
+| 项目索引 | 进程退出后丢失，无法跨文件查找 | 进程生命周期内持久 | 引用查找 + 符号搜索 |
+| 高亮加载 | 每次重新请求 Sidecar（100-500ms） | 缓存命中 <5ms | 文件切换 |
+| Ctrl+O 切换项目 | 已打开项目时无法触发 | 正常工作 | 用户体验 |
+| 跨文件引用 | 只返回当前文件结果 | 返回项目中所有文件结果 | 代码导航 |
 
 ---
 
-## 9. 后续优化方向
+## 7. v0.6.0 历史优化记录
 
-### 9.1 Sidecar 常驻进程 + 按需通信（高优先级）
+> 以下为 v0.6.0-rc1 的优化内容，已合并至发布版本。
 
-**当前问题**：每次调用 Sidecar 功能（高亮、跳转、引用、大纲）都会 `spawn` 一个新的 Sidecar 进程，请求完成后进程退出。频繁的进程创建/销毁带来显著的延迟开销（Windows 上进程创建约 10-50ms）。
+| 优化 ID | 优化名称 | 严重程度 | 状态 |
+|---------|---------|---------|------|
+| OPT-001 | Monaco Editor CDN 兼容性修复 | 致命 | 已完成 |
+| OPT-002 | Monarch Tokenizer 规则修复 | 致命 | 已完成 |
+| OPT-003 | Sidecar 进程打包与分发 | 致命 | 已完成 |
+| OPT-004 | Sidecar 子进程窗口隐藏 | 高 | 已完成 |
+| OPT-005 | 全局快捷键优先级修复 | 中 | 已完成 |
+| OPT-006 | Editor 组件渲染性能优化 | 中 | 已完成 |
 
-**优化方案**：启动时 spawn 一个常驻 Sidecar 进程，通过长连接（stdin/stdout 管道）复用通信。引入请求 ID 机制支持并发请求。
+详细内容参见 v1.0 版本文档（git history）。
 
-**预期效果**：功能响应延迟降低 50%+（消除进程创建开销）。
+---
 
-### 9.2 语义高亮结果缓存（高优先级）
+## 8. 后续优化方向
 
-**当前问题**：切换回已打开过的文件时，会重新向 Sidecar 请求高亮数据。对于大文件（如 STL 源码），高亮计算耗时可达数百毫秒。
+### 8.1 SQLite 符号索引持久化（中优先级）
 
-**优化方案**：在前端维护 `Map<filePath, HighlightData>` 缓存。文件内容未变时直接使用缓存结果，通过文件内容 hash 或 mtime 判断是否需要刷新。
-
-**预期效果**：已访问文件的重新打开高亮延迟降至 <5ms。
-
-### 9.3 SQLite 符号索引持久化（中优先级）
-
-**当前问题**：符号索引仅存内存，Sidecar 进程退出后丢失。每次使用符号搜索功能前需要重新构建索引。
+**当前状态**：常驻进程内 `file_cache_` 在进程重启后丢失。应用重启后需要重新构建索引。
 
 **优化方案**：详见 REQUIREMENTS.md §5.2。将索引持久化到 SQLite 数据库，支持增量更新。
 
-**预期效果**：二次启动后符号搜索 <100ms。
+**预期效果**：二次启动后符号搜索 <100ms，无需等待索引重建。
 
-### 9.4 多线程并行解析（中优先级）
+### 8.2 多线程并行解析（中优先级）
 
-**当前问题**：大型项目（百万行）索引构建耗时可达数十秒。
+**当前状态**：大型项目（百万行）索引构建耗时可达数十秒。
 
 **优化方案**：详见 REQUIREMENTS.md §5.3。使用 C++20 `std::jthread` 线程池并行解析。
 
 **预期效果**：8 核 CPU 上索引速度提升 5-6 倍。
 
-### 9.5 编辑器增量高亮更新（低优先级）
+### 8.3 编辑器增量高亮更新（低优先级）
 
-**当前问题**：代码高亮采用全量请求模式（每次打开文件完整请求高亮数据），未利用 Tree-sitter 的增量解析能力。
+**当前状态**：代码高亮采用全量请求模式（每次打开文件完整请求高亮数据），未利用 Tree-sitter 的增量解析能力。
 
 **优化方案**：详见 REQUIREMENTS.md §5.1。捕获 Monaco `onDidChangeModelContent` 事件，发送增量差异到 Sidecar 进行增量解析。
 
 **适用场景**：未来支持代码编辑功能时启用。当前为只读阅读器，优先级较低。
 
+### 8.4 高亮缓存持久化到 IndexedDB（低优先级）
+
+**当前状态**：高亮缓存（OPT-008）为模块级 Map，页面刷新后丢失。
+
+**优化方案**：将缓存 key/value 序列化存储到浏览器的 IndexedDB 中，页面加载时恢复。
+
+**预期效果**：页面刷新后已访问文件的高亮立即可用。
+
 ---
 
 *文档结束*
 
-*本文档记录 CodeLens v0.6.0-rc1 的优化过程，后续版本持续更新。*
+*本文档记录 CodeLens v0.7.0 的优化过程，后续版本持续更新。*

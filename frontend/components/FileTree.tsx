@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useMemo } from 'react';
+import { useState, useCallback, useRef, useMemo, useEffect } from 'react';
 import FileIcon from './FileIcon';
 import ContextMenu, { MenuItemDef } from './ContextMenu';
 
@@ -89,6 +89,11 @@ export default function FileTree({ onFileSelect, excludePatterns }: FileTreeProp
 
   const loadProject = async (dirPath: string) => {
     setProjectPath(dirPath);
+    setExpandedKeys(new Set());
+    setSearchTerm('');
+    if (searchInputRef.current) {
+      searchInputRef.current.value = '';
+    }
     try {
       const { invoke } = await import('@tauri-apps/api/core');
       const entries = await invoke<Array<{ name: string; isDir: boolean; path: string }>>(
@@ -107,6 +112,18 @@ export default function FileTree({ onFileSelect, excludePatterns }: FileTreeProp
         children: e.isDir ? [] : undefined,
       }));
       setTreeData(sortNodes(nodes));
+
+      // 后台触发项目符号索引（常驻 Sidecar，索引结果在进程生命周期内保持）
+      // 这使得跨文件引用查找、符号搜索等功能可用
+      invoke('sidecar_index_project', { projectPath: dirPath })
+        .then((result: any) => {
+          if (result?.success) {
+            console.log(`[CodeLens] 项目索引完成: ${result.fileCount || 0} 文件, ${result.symbolCount || 0} 符号`);
+          }
+        })
+        .catch((err: any) => {
+          console.warn('[CodeLens] 项目索引失败（不影响文件浏览）:', err);
+        });
     } catch (err) {
       console.error('加载项目失败:', err);
     }
@@ -159,6 +176,17 @@ export default function FileTree({ onFileSelect, excludePatterns }: FileTreeProp
       return n;
     });
   };
+
+  // 监听来自父组件的 "打开项目" 事件（Ctrl+O 或菜单触发）
+  useEffect(() => {
+    const handleOpenProjectEvent = () => {
+      handleOpenProject();
+    };
+    document.addEventListener('codelens:open-project', handleOpenProjectEvent);
+    return () => {
+      document.removeEventListener('codelens:open-project', handleOpenProjectEvent);
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleOpenProject = async () => {
     try {

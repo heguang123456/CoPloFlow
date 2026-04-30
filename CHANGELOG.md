@@ -5,6 +5,47 @@
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
+## [0.7.0] - 2026-04-30
+
+### 新增 (Added)
+
+#### 后端 - Sidecar 常驻进程（OPT-007）
+- `lib.rs` 重构 Sidecar 通信架构：
+  - `SidecarProcess` 结构体管理常驻进程生命周期（stdin/stdout 管道 + 自增请求 ID）
+  - `SIDECAR` 全局 `Mutex<Option<SidecarProcess>>` 单例，线程安全
+  - `ensure_sidecar()` 懒启动 + 自动重启机制
+  - `send_sidecar_request()` 简化为 method + params 两参数（内部自动管理进程）
+  - `Drop` trait 实现优雅关闭（先发 shutdown 再 kill）
+
+#### 前端 - 语义高亮缓存（OPT-008）
+- `Editor.tsx` 新增模块级 `highlightCache`（Map<string, Decoration[]>）：
+  - 缓存 key 为 `filePath + contentLength + contentPrefix`
+  - 缓存命中时直接 `deltaDecorations`，跳过 Sidecar 请求
+  - FIFO 淘汰策略：超过 200 个条目时删除最旧的一半
+- 新增 `getCacheKey()` 辅助函数
+
+#### 前端 - 自动项目索引
+- `FileTree.tsx` 在 `loadProject()` 成功后自动后台触发 `sidecar_index_project`
+- 索引结果在 Sidecar 常驻进程生命周期内保持，使跨文件引用查找和符号搜索立即可用
+
+### 变更 (Changed)
+
+#### 前端 - Ctrl+O 修复（OPT-010）
+- `FileTree.tsx` 新增 `useEffect` 监听 `codelens:open-project` 自定义事件
+- `loadProject()` 中重置展开状态（`setExpandedKeys(new Set())`）和搜索状态
+- 导入新增 `useEffect`
+
+#### 后端 - 架构简化
+- 所有 `sidecar_*` 命令函数移除 `find_sidecar_path()` 调用（由 `send_sidecar_request` 内部管理）
+- `send_sidecar_request` 签名从 `(sidecar_path, method, params)` 简化为 `(method, params)`
+- 版本号更新至 v0.7.0
+
+#### 文档
+- `docs/OPTIMIZATION.md` 升级至 v2.0：
+  - 新增 OPT-007~OPT-010 四项优化记录
+  - v0.6.0 历史记录归档
+  - 更新后续优化方向（移除已实现的项）
+
 ## [0.6.0-rc1] - 2026-04-30
 
 ### 新增 (Added)
