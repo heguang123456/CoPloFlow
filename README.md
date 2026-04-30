@@ -71,7 +71,7 @@ CodeLens/
 │   ├── DESIGN_F004_OUTLINE.md # F-004 符号大纲设计文档
 │   ├── DESIGN_F005_INDEX.md   # F-005 符号索引设计文档
 │   ├── DESIGN_PHASE5.md       # 阶段5 UI完善设计文档
-│   ├── OPTIMIZATION.md        # 优化文档（v0.6.0 运行时优化）
+│   ├── OPTIMIZATION.md        # 优化文档（v0.7.0 运行时优化）
 │   ├── TEST_REPORT_PHASE2.md # 阶段2 测试报告
 │   ├── TEST_REPORT_PHASE3.md # 阶段3 测试报告
 │   └── TEST_REPORT_PHASE4.md # 阶段4 测试报告
@@ -258,7 +258,31 @@ cargo tauri build
   - `cursorPos` 从 `useState` 改为 `useRef` + 直接 DOM 更新，光标移动零 re-render
   - `editorOptions` 用 `useMemo` 缓存
   - `CodeEditorView` 用 `React.memo` 包装
-- 优化文档：`docs/OPTIMIZATION.md`
+- 优化文档：`docs/OPTIMIZATION.md`（v1.0 → v2.0）
+- 索引持久化说明更新：常驻进程内保持，进程重启后需重建
+
+### 运行时优化 v0.7.0 ✅
+
+**提交**：`feat/opt007-sidecar-persistent` 分支
+**标签**：`v0.7.0`
+**内容**：
+- **Sidecar 常驻进程**（OPT-007）：
+  - 全局 `Mutex<Option<SidecarProcess>>` 管理常驻进程
+  - stdin/stdout 管道复用，请求 ID 自增机制
+  - 懒启动 + 自动重启（`try_wait()` 检测进程存活）
+  - `Drop` trait 优雅关闭（shutdown → kill）
+  - 所有 `sidecar_*` 命令函数简化（移除 `find_sidecar_path` 调用）
+- **语义高亮缓存**（OPT-008）：
+  - 模块级 `Map<string, Decoration[]>` 缓存
+  - 缓存 key：`filePath + contentLength + contentPrefix`
+  - FIFO 淘汰（超过 200 个条目时清理最旧的一半）
+- **跨文件引用查找修复**（OPT-009）：
+  - `FileTree.loadProject()` 自动后台触发 `sidecar_index_project`
+  - 索引在 Sidecar 进程生命周期内保持，跨文件引用查找和符号搜索立即可用
+- **Ctrl+O 修复**（OPT-010）：
+  - `FileTree.tsx` 新增 `useEffect` 监听 `codelens:open-project` 事件
+  - 项目切换时重置展开状态和搜索状态
+- 优化文档：`docs/OPTIMIZATION.md` 升级至 v2.0
 
 ## JSON-RPC 方法清单
 
