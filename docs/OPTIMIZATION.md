@@ -6,10 +6,10 @@
 
 | 项目 | 信息 |
 |------|------|
-| 文档版本 | v2.0 |
+| 文档版本 | v2.1 |
 | 创建日期 | 2026-04-30 |
-| 最后更新 | 2026-04-30 |
-| 适用版本 | v0.7.0 |
+| 最后更新 | 2026-05-06 |
+| 适用版本 | v0.7.1 |
 | 参考规范 | REQUIREMENTS.md §5 技术优化方案 |
 
 ---
@@ -23,7 +23,8 @@
 5. [OPT-010: Ctrl+O 已打开文件夹时无法切换项目](#5-opt-010-ctrlo-已打开文件夹时无法切换项目)
 6. [v0.7.0 优化效果总结](#6-v070-优化效果总结)
 7. [v0.6.0 历史优化记录](#7-v060-历史优化记录)
-8. [后续优化方向](#8-后续优化方向)
+8. [v0.7.1 Bug 修复记录](#8-v071-bug-修复记录)
+9. [后续优化方向](#9-后续优化方向)
 
 ---
 
@@ -367,9 +368,72 @@ loadProject(dirPath) {
 
 ---
 
-## 8. 后续优化方向
+## 8. v0.7.1 Bug 修复记录
 
-### 8.1 SQLite 符号索引持久化（中优先级）
+> v0.7.1 修复两个影响代码导航核心功能的 Bug，均为前端逻辑缺陷。
+
+### 8.1 BUG-001: 符号大纲点击不跳转（F-004）
+
+| 项目 | 信息 |
+|------|------|
+| 影响功能 | F-004 符号大纲、F-005 搜索面板、F-003 引用面板 |
+| 严重程度 | 高 |
+| 根因类型 | 逻辑遗漏 |
+
+**问题描述**：用户在侧边栏符号大纲中点击某个符号后，编辑器不跳转到对应行。同时搜索面板和引用面板的跳转也不生效。
+
+**根因分析**：`Editor.tsx` 的 `handleEditorMount` 回调中将编辑器实例保存到了 `editorRef.current`，但**未赋值到 `window.__MONACO_EDITOR__`**。而 `index.tsx` 中的 `handleGoToDefinition`、`onSymbolClick` 等回调均通过 `window.__MONACO_EDITOR__` 获取编辑器实例来调用 `revealLineInCenter` / `setPosition`。由于该全局变量始终为 `undefined`，所有跳转操作的 `if (editor)` 检查均失败。
+
+**修复方案**：在 `handleEditorMount` 中添加 `window.__MONACO_EDITOR__ = editor`。
+
+**修复文件**：`frontend/components/Editor.tsx`
+
+### 8.2 BUG-002: Go to Definition 找不到定义（F-002）
+
+| 项目 | 信息 |
+|------|------|
+| 影响功能 | F-002 符号跳转（F12 / Ctrl+Click） |
+| 严重程度 | 高 |
+| 根因类型 | 架构缺陷 |
+
+**问题描述**：用户在编辑器中对变量或函数名执行 F12 或 Ctrl+Click 时，Monaco 提示"找不到定义"。
+
+**根因分析**：两个子问题叠加导致：
+
+1. **同文件定义 — URI 不匹配**：`@monaco-editor/react` 组件通过 `value` prop 创建 Monaco model，内部 URI 为 `inmemory://model/N`（内存 URI）。定义 Provider 返回 `monaco.Uri.file(filePath)` 构建的 `file://` URI。Monaco 的内置导航在比较两个 URI 时不匹配，导致同文件跳转也失败。
+
+2. **跨文件定义 — 无 content provider**：Monaco standalone 缺少 VS Code 级别的文件系统集成。定义 Provider 返回跨文件 `file://` URI 后，Monaco 尝试打开该 URI 对应的 model，但没有 content provider 来加载文件内容，导航静默失败。
+
+**修复方案**：
+
+```
+provideDefinition(model, position):
+  result ← invoke('sidecar_goto_definition', { filepath, line, col })
+
+  if result.success:
+    // 优先同文件定义：使用 model.uri 确保 URI 匹配
+    sameFileDef ← definitions.find(path === currentFilePath)
+    if sameFileDef:
+      return [{ uri: model.uri, range }]
+
+    // 跨文件定义：通过回调打开目标文件
+    gotoDef ← window.__CODELENS_GOTO_DEF__
+    gotoDef(targetPath, line, col)
+    return null  // 不让 Monaco 尝试打开不存在的 model
+```
+
+- 同文件定义使用 `model.uri` 替代 `monaco.Uri.file()`，确保 Monaco 内置导航能匹配当前 model
+- 跨文件定义通过 `window.__CODELENS_GOTO_DEF__` 回调触发 React 层的文件打开 + 定位逻辑
+- 新增 `useEffect` 将 `onGoToDefinition` prop 同步到 `window.__CODELENS_GOTO_DEF__`
+- `handleGoToDefinition` 延时从 100ms 增加到 200ms，确保 React re-render + Monaco 内容更新完成
+
+**修复文件**：`frontend/components/Editor.tsx`、`frontend/pages/index.tsx`
+
+---
+
+## 9. 后续优化方向
+
+### 9.1 SQLite 符号索引持久化（中优先级）
 
 **当前状态**：常驻进程内 `file_cache_` 在进程重启后丢失。应用重启后需要重新构建索引。
 
@@ -377,7 +441,7 @@ loadProject(dirPath) {
 
 **预期效果**：二次启动后符号搜索 <100ms，无需等待索引重建。
 
-### 8.2 多线程并行解析（中优先级）
+### 9.2 多线程并行解析（中优先级）
 
 **当前状态**：大型项目（百万行）索引构建耗时可达数十秒。
 
@@ -385,7 +449,7 @@ loadProject(dirPath) {
 
 **预期效果**：8 核 CPU 上索引速度提升 5-6 倍。
 
-### 8.3 编辑器增量高亮更新（低优先级）
+### 9.3 编辑器增量高亮更新（低优先级）
 
 **当前状态**：代码高亮采用全量请求模式（每次打开文件完整请求高亮数据），未利用 Tree-sitter 的增量解析能力。
 
@@ -393,7 +457,7 @@ loadProject(dirPath) {
 
 **适用场景**：未来支持代码编辑功能时启用。当前为只读阅读器，优先级较低。
 
-### 8.4 高亮缓存持久化到 IndexedDB（低优先级）
+### 9.4 高亮缓存持久化到 IndexedDB（低优先级）
 
 **当前状态**：高亮缓存（OPT-008）为模块级 Map，页面刷新后丢失。
 
@@ -405,4 +469,4 @@ loadProject(dirPath) {
 
 *文档结束*
 
-*本文档记录 CodeLens v0.7.0 的优化过程，后续版本持续更新。*
+*本文档记录 CodeLens v0.7.1 的优化过程，后续版本持续更新。*
