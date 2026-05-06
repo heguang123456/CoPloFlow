@@ -284,6 +284,14 @@ cargo tauri build
   - 项目切换时重置展开状态和搜索状态
 - 优化文档：`docs/OPTIMIZATION.md` 升级至 v2.0
 
+### Bug 修复 v0.7.1 ✅
+
+**提交**：`fix/f002-f004-navigation` 分支
+**内容**：
+- **符号大纲跳转修复**（BUG-001）：`handleEditorMount` 中添加 `window.__MONACO_EDITOR__ = editor`，修复符号大纲、搜索面板、引用面板跳转不生效
+- **Go to Definition 修复**（BUG-002）：重写定义 Provider，同文件定义使用 `model.uri` 确保 URI 匹配，跨文件定义通过回调打开目标文件
+- 优化文档：`docs/OPTIMIZATION.md` 升级至 v2.1
+
 ## JSON-RPC 方法清单
 
 ### 已实现

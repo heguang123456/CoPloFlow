@@ -159,22 +159,36 @@ function registerCodelensLanguage(monaco: any) {
   });
 
   // 注册定义 Provider（F12 / Ctrl+Click）
+  // 同文件定义：使用 model.uri 确保 URI 匹配，Monaco 内置导航处理
+  // 跨文件定义：通过 __CODELENS_GOTO_DEF__ 回调打开目标文件并跳转
   monaco.languages.registerDefinitionProvider('codelens-cpp', {
     provideDefinition: async (model: any, position: any) => {
       try {
         const { invoke } = await import('@tauri-apps/api/core');
+        const currentFilePath = window.__CODELENS_CURRENT_FILE__ || '';
         const result = await invoke<any>('sidecar_goto_definition', {
-          filepath: window.__CODELENS_CURRENT_FILE__ || '',
+          filepath: currentFilePath,
           line: position.lineNumber - 1,  // Monaco 1-based → 0-based
           col: position.column - 1,
         });
 
         if (result && result.success) {
-          if (result.single && result.definition) {
-            const def = result.definition;
-            const filePath = def.uri.replace('file:///', '').replace(/\//g, '\\');
+          const definitions = result.single && result.definition
+            ? [result.definition]
+            : (result.candidates || []);
+
+          if (definitions.length === 0) return null;
+
+          // 优先返回同文件定义（URI 匹配，Monaco 可直接导航）
+          const sameFileDef = definitions.find((d: any) => {
+            const path = d.uri.replace('file:///', '').replace(/\//g, '\\');
+            return path === currentFilePath;
+          });
+
+          if (sameFileDef) {
+            const def = sameFileDef;
             return [{
-              uri: monaco.Uri.file(filePath),
+              uri: model.uri,
               range: new monaco.Range(
                 def.range.start.line + 1,
                 def.range.start.character + 1,
@@ -182,18 +196,19 @@ function registerCodelensLanguage(monaco: any) {
                 def.range.end.character + 1,
               ),
             }];
-          } else if (result.candidates && result.candidates.length > 0) {
-            // 多定义候选
-            return result.candidates.map((c: any) => ({
-              uri: monaco.Uri.file(c.uri.replace('file:///', '').replace(/\//g, '\\')),
-              range: new monaco.Range(
-                c.range.start.line + 1,
-                c.range.start.character + 1,
-                c.range.end.line + 1,
-                c.range.end.character + 1,
-              ),
-            }));
           }
+
+          // 跨文件定义：通过回调打开目标文件
+          const targetDef = definitions[0];
+          const targetPath = targetDef.uri.replace('file:///', '').replace(/\//g, '\\');
+          const gotoDef = (window as any).__CODELENS_GOTO_DEF__;
+
+          if (gotoDef) {
+            gotoDef(targetPath, targetDef.range.start.line, targetDef.range.start.character);
+          }
+
+          // 返回 null 防止 Monaco 尝试打开不存在的 model URI
+          return null;
         }
       } catch (err) {
         console.log('[CodeLens] Definition provider error:', err);
@@ -302,6 +317,13 @@ export default memo(function CodeEditorView({
     }
   }, [filePath]);
 
+  // 将跨文件跳转回调同步到 window，供定义 Provider 使用
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      (window as any).__CODELENS_GOTO_DEF__ = onGoToDefinition || null;
+    }
+  }, [onGoToDefinition]);
+
   const applySemanticHighlight = useCallback(async (
     editor: any,
     monaco: any,
@@ -359,6 +381,11 @@ export default memo(function CodeEditorView({
   const handleEditorMount: OnMount = useCallback((editor, monaco) => {
     editorRef.current = editor;
     monacoRef.current = monaco;
+
+    // 将编辑器实例暴露到 window，供大纲跳转、搜索/引用面板跳转等使用
+    if (typeof window !== 'undefined') {
+      (window as any).__MONACO_EDITOR__ = editor;
+    }
 
     // 注册自定义语言、主题和 Provider
     registerCodelensLanguage(monaco);

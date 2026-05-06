@@ -5,6 +5,28 @@
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
+## [0.7.1] - 2026-05-06
+
+### 修复 (Fixed)
+
+#### 前端 - 符号跳转修复（F-002）
+- `Editor.tsx` 定义 Provider（`registerDefinitionProvider`）重写：
+  - **同文件定义**：使用 `model.uri` 替代 `monaco.Uri.file(filePath)` 确保 URI 匹配，修复 Monaco 无法在同文件内导航的 Bug
+  - **跨文件定义**：通过 `window.__CODELENS_GOTO_DEF__` 回调打开目标文件并跳转，替代 Monaco 内置跨文件导航（Monaco 无 content provider 无法加载文件）
+  - 多定义候选时优先返回同文件定义
+- `Editor.tsx` 新增 `useEffect` 同步 `onGoToDefinition` 回调到 `window.__CODELENS_GOTO_DEF__`
+- `index.tsx` `handleGoToDefinition` 延时从 100ms 增加到 200ms，确保 React re-render + Monaco 内容更新完成后才跳转
+
+#### 前端 - 符号大纲跳转修复（F-004）
+- `Editor.tsx` `handleEditorMount` 中新增 `window.__MONACO_EDITOR__ = editor` 赋值
+  - 修复 `index.tsx` 中符号大纲 `onSymbolClick` 回调内 `if (editor)` 检查始终为 false 的 Bug
+  - 同时修复搜索面板（F-005）和引用面板（F-003）跳转位置不生效的关联 Bug
+
+### 根因分析
+- **`__MONACO_EDITOR__` 未赋值**：`@monaco-editor/react` 的 `onMount` 回调中仅保存了 editor ref，但未将其暴露到全局。所有依赖 `window.__MONACO_EDITOR__` 的跳转逻辑（大纲、搜索、引用）均无法获取编辑器实例
+- **定义 Provider URI 不匹配**：Monaco model 由 `@monaco-editor/react` 通过 `value` prop 创建，URI 为 `inmemory://model/N`。定义 Provider 返回 `monaco.Uri.file(filePath)` 构建的 `file://` URI，两者不匹配导致 Monaco 内置导航失败
+- **跨文件导航无 content provider**：Monaco standalone 缺少 VS Code 级别的文件系统集成，无法自动加载 `file://` URI 对应的文件内容
+
 ## [0.7.0] - 2026-04-30
 
 ### 新增 (Added)
