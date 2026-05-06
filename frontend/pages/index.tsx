@@ -146,15 +146,15 @@ export default function Home() {
         setLanguage(langMap[ext]);
       }
 
-      // 跳转到目标行
+      // 跳转到目标行（等待 React re-render + Monaco 内容更新完成）
       setTimeout(() => {
         const editor = (window as any).__MONACO_EDITOR__;
         if (editor) {
           editor.revealLineInCenter(line + 1);
-          editor.setPosition({ lineNumber: line + 1, column: 1 });
+          editor.setPosition({ lineNumber: line + 1, column: col + 1 });
           editor.focus();
         }
-      }, 100);
+      }, 200);
     } catch (err) {
       console.error('无法跳转到文件:', err);
     }
@@ -599,7 +599,7 @@ export default function Home() {
             onClick={triggerFindReferences}
             title="Shift+F12 查找引用"
           >
-            CodeLens v0.7.0
+            CodeLens v0.7.1
           </span>
         </footer>
       </div>
