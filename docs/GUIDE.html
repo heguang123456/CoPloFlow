@@ -1,0 +1,1238 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CodeLens 代码阅读器 - 项目可视化指南</title>
+<style>
+  :root {
+    --bg-primary: #0d1117;
+    --bg-secondary: #161b22;
+    --bg-tertiary: #21262d;
+    --bg-card: #1c2128;
+    --border: #30363d;
+    --text-primary: #e6edf3;
+    --text-secondary: #8b949e;
+    --text-muted: #6e7681;
+    --accent-blue: #58a6ff;
+    --accent-green: #3fb950;
+    --accent-purple: #bc8cff;
+    --accent-orange: #d29922;
+    --accent-red: #f85149;
+    --accent-cyan: #39d2c0;
+    --accent-pink: #f778ba;
+    --accent-yellow: #e3b341;
+    --radius: 12px;
+    --shadow: 0 2px 12px rgba(0,0,0,0.3);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans SC', sans-serif;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    line-height: 1.6;
+    min-height: 100vh;
+  }
+
+  /* Header */
+  .hero {
+    background: linear-gradient(135deg, #0d1117 0%, #161b22 50%, #1c2128 100%);
+    border-bottom: 1px solid var(--border);
+    padding: 60px 40px 50px;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+  }
+  .hero::before {
+    content: '';
+    position: absolute;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background: radial-gradient(circle at 30% 40%, rgba(88,166,255,0.06) 0%, transparent 50%),
+                radial-gradient(circle at 70% 60%, rgba(188,140,255,0.04) 0%, transparent 50%);
+    pointer-events: none;
+  }
+  .hero-content { position: relative; z-index: 1; max-width: 800px; margin: 0 auto; }
+  .hero-logo {
+    font-size: 48px;
+    font-weight: 800;
+    letter-spacing: -1px;
+    margin-bottom: 8px;
+    background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .hero-subtitle {
+    font-size: 18px;
+    color: var(--text-secondary);
+    margin-bottom: 20px;
+  }
+  .hero-version {
+    display: inline-block;
+    padding: 4px 14px;
+    border-radius: 20px;
+    font-size: 13px;
+    font-weight: 600;
+    background: rgba(63,185,80,0.12);
+    color: var(--accent-green);
+    border: 1px solid rgba(63,185,80,0.25);
+  }
+  .hero-stats {
+    display: flex;
+    justify-content: center;
+    gap: 40px;
+    margin-top: 30px;
+    flex-wrap: wrap;
+  }
+  .stat { text-align: center; }
+  .stat-value {
+    font-size: 32px;
+    font-weight: 700;
+    line-height: 1.2;
+  }
+  .stat-label {
+    font-size: 12px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-top: 4px;
+  }
+
+  /* Container */
+  .container {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 40px 20px;
+  }
+
+  /* Section */
+  .section {
+    margin-bottom: 56px;
+  }
+  .section-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 24px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--border);
+  }
+  .section-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    flex-shrink: 0;
+  }
+  .section-title {
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: -0.3px;
+  }
+
+  /* Architecture Diagram */
+  .arch-diagram {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 32px;
+    overflow-x: auto;
+  }
+  .arch-layers {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    min-width: 700px;
+  }
+  .arch-layer {
+    border-radius: 10px;
+    padding: 20px;
+    position: relative;
+  }
+  .arch-layer-title {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    color: rgba(255,255,255,0.6);
+    margin-bottom: 12px;
+    font-weight: 700;
+  }
+  .arch-boxes {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+  .arch-box {
+    padding: 14px 20px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    text-align: center;
+    min-width: 140px;
+    border: 1px solid rgba(255,255,255,0.1);
+  }
+  .arch-box small {
+    display: block;
+    font-size: 11px;
+    font-weight: 400;
+    opacity: 0.7;
+    margin-top: 4px;
+  }
+  .layer-frontend {
+    background: linear-gradient(135deg, rgba(88,166,255,0.12), rgba(88,166,255,0.04));
+    border: 1px solid rgba(88,166,255,0.2);
+  }
+  .layer-frontend .arch-box {
+    background: rgba(88,166,255,0.15);
+    border-color: rgba(88,166,255,0.3);
+    color: var(--accent-blue);
+  }
+  .layer-tauri {
+    background: linear-gradient(135deg, rgba(63,185,80,0.12), rgba(63,185,80,0.04));
+    border: 1px solid rgba(63,185,80,0.2);
+  }
+  .layer-tauri .arch-box {
+    background: rgba(63,185,80,0.15);
+    border-color: rgba(63,185,80,0.3);
+    color: var(--accent-green);
+  }
+  .layer-sidecar {
+    background: linear-gradient(135deg, rgba(188,140,255,0.12), rgba(188,140,255,0.04));
+    border: 1px solid rgba(188,140,255,0.2);
+  }
+  .layer-sidecar .arch-box {
+    background: rgba(188,140,255,0.15);
+    border-color: rgba(188,140,255,0.3);
+    color: var(--accent-purple);
+  }
+  .layer-data {
+    background: linear-gradient(135deg, rgba(210,153,34,0.12), rgba(210,153,34,0.04));
+    border: 1px solid rgba(210,153,34,0.2);
+  }
+  .layer-data .arch-box {
+    background: rgba(210,153,34,0.15);
+    border-color: rgba(210,153,34,0.3);
+    color: var(--accent-orange);
+  }
+  .arch-arrow {
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 20px;
+    padding: 2px 0;
+    letter-spacing: 8px;
+  }
+  .arch-arrow span {
+    font-size: 10px;
+    color: var(--text-muted);
+    letter-spacing: 0;
+    vertical-align: middle;
+  }
+  .proto-tag {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 600;
+    background: rgba(255,255,255,0.08);
+    color: var(--text-secondary);
+    border: 1px solid var(--border);
+  }
+
+  /* Feature Grid */
+  .feature-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 16px;
+  }
+  .feature-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px;
+    transition: border-color 0.2s, transform 0.2s;
+    cursor: default;
+  }
+  .feature-card:hover {
+    border-color: rgba(88,166,255,0.4);
+    transform: translateY(-2px);
+  }
+  .feature-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+  }
+  .feature-id {
+    font-size: 12px;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 4px;
+    background: rgba(88,166,255,0.1);
+    color: var(--accent-blue);
+    border: 1px solid rgba(88,166,255,0.2);
+  }
+  .feature-priority {
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-weight: 600;
+  }
+  .priority-p0 { background: rgba(248,81,73,0.12); color: var(--accent-red); border: 1px solid rgba(248,81,73,0.25); }
+  .priority-p1 { background: rgba(210,153,34,0.12); color: var(--accent-orange); border: 1px solid rgba(210,153,34,0.25); }
+  .feature-name {
+    font-size: 16px;
+    font-weight: 700;
+    margin-bottom: 6px;
+  }
+  .feature-desc {
+    font-size: 13px;
+    color: var(--text-secondary);
+    line-height: 1.5;
+  }
+  .feature-status {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 12px;
+    font-size: 12px;
+    font-weight: 600;
+  }
+  .status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .status-done .status-dot { background: var(--accent-green); box-shadow: 0 0 6px rgba(63,185,80,0.5); }
+  .status-done { color: var(--accent-green); }
+  .status-progress .status-dot { background: var(--accent-orange); animation: pulse 2s infinite; }
+  .status-progress { color: var(--accent-orange); }
+  .status-pending .status-dot { background: var(--text-muted); }
+  .status-pending { color: var(--text-muted); }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+  /* Timeline */
+  .timeline {
+    position: relative;
+    padding-left: 32px;
+  }
+  .timeline::before {
+    content: '';
+    position: absolute;
+    left: 11px;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: linear-gradient(to bottom, var(--accent-blue), var(--accent-purple), var(--accent-green));
+    border-radius: 1px;
+  }
+  .timeline-item {
+    position: relative;
+    margin-bottom: 24px;
+    padding: 16px 20px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+  }
+  .timeline-item:last-child { margin-bottom: 0; }
+  .timeline-dot {
+    position: absolute;
+    left: -27px;
+    top: 20px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    border: 2px solid var(--bg-primary);
+  }
+  .timeline-item:nth-child(1) .timeline-dot { background: var(--accent-blue); }
+  .timeline-item:nth-child(2) .timeline-dot { background: #7c6aef; }
+  .timeline-item:nth-child(3) .timeline-dot { background: var(--accent-purple); }
+  .timeline-item:nth-child(4) .timeline-dot { background: var(--accent-cyan); }
+  .timeline-item:nth-child(5) .timeline-dot { background: var(--accent-green); }
+  .timeline-item:nth-child(6) .timeline-dot { background: var(--accent-orange); }
+  .timeline-item:nth-child(7) .timeline-dot { background: var(--accent-yellow); }
+  .timeline-item:nth-child(8) .timeline-dot { background: var(--accent-pink); }
+  .timeline-meta {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 6px;
+    flex-wrap: wrap;
+  }
+  .timeline-version {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--accent-blue);
+  }
+  .timeline-date {
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+  .timeline-tag {
+    font-size: 11px;
+    padding: 1px 7px;
+    border-radius: 4px;
+    font-weight: 600;
+  }
+  .tag-feat { background: rgba(63,185,80,0.12); color: var(--accent-green); }
+  .tag-fix { background: rgba(248,81,73,0.12); color: var(--accent-red); }
+  .tag-opt { background: rgba(188,140,255,0.12); color: var(--accent-purple); }
+  .tag-phase { background: rgba(88,166,255,0.12); color: var(--accent-blue); }
+  .timeline-title {
+    font-size: 15px;
+    font-weight: 700;
+    margin-bottom: 4px;
+  }
+  .timeline-desc {
+    font-size: 13px;
+    color: var(--text-secondary);
+    line-height: 1.5;
+  }
+  .timeline-details {
+    margin-top: 8px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .detail-chip {
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    background: var(--bg-tertiary);
+    color: var(--text-secondary);
+    border: 1px solid var(--border);
+  }
+
+  /* Tech Stack */
+  .tech-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 12px;
+  }
+  .tech-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px;
+    text-align: center;
+    transition: border-color 0.2s;
+  }
+  .tech-card:hover { border-color: rgba(88,166,255,0.3); }
+  .tech-icon {
+    font-size: 28px;
+    margin-bottom: 8px;
+    display: block;
+  }
+  .tech-name {
+    font-size: 14px;
+    font-weight: 700;
+    margin-bottom: 4px;
+  }
+  .tech-role {
+    font-size: 11px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .tech-ver {
+    font-size: 11px;
+    color: var(--text-secondary);
+    margin-top: 4px;
+  }
+
+  /* RPC Methods Table */
+  .rpc-table-wrap {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+  .rpc-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  .rpc-table thead {
+    background: var(--bg-tertiary);
+  }
+  .rpc-table th {
+    padding: 12px 16px;
+    text-align: left;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-muted);
+    font-weight: 700;
+    border-bottom: 1px solid var(--border);
+  }
+  .rpc-table td {
+    padding: 10px 16px;
+    border-bottom: 1px solid rgba(48,54,61,0.5);
+    color: var(--text-secondary);
+  }
+  .rpc-table tr:last-child td { border-bottom: none; }
+  .rpc-table tr:hover td { background: rgba(88,166,255,0.03); }
+  .rpc-method {
+    font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', monospace;
+    color: var(--accent-blue);
+    font-size: 12px;
+    font-weight: 600;
+  }
+  .rpc-phase {
+    font-size: 11px;
+    padding: 2px 7px;
+    border-radius: 4px;
+    font-weight: 600;
+    display: inline-block;
+  }
+  .rpc-phase-1 { background: rgba(88,166,255,0.1); color: var(--accent-blue); }
+  .rpc-phase-2 { background: rgba(57,210,192,0.1); color: var(--accent-cyan); }
+  .rpc-phase-3 { background: rgba(188,140,255,0.1); color: var(--accent-purple); }
+  .rpc-phase-4 { background: rgba(63,185,80,0.1); color: var(--accent-green); }
+
+  /* Shortcut Bar */
+  .shortcut-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 10px;
+  }
+  .shortcut-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 14px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+  }
+  .shortcut-label {
+    font-size: 13px;
+    color: var(--text-secondary);
+  }
+  .shortcut-keys {
+    display: flex;
+    gap: 4px;
+  }
+  .key {
+    padding: 2px 8px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-size: 12px;
+    font-family: 'SF Mono', 'Cascadia Code', monospace;
+    color: var(--text-primary);
+    font-weight: 600;
+  }
+
+  /* Progress Bar */
+  .progress-section {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 24px;
+    margin-bottom: 16px;
+  }
+  .progress-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+  }
+  .progress-title {
+    font-size: 14px;
+    font-weight: 700;
+  }
+  .progress-pct {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--accent-green);
+  }
+  .progress-bar {
+    height: 8px;
+    background: var(--bg-tertiary);
+    border-radius: 4px;
+    overflow: hidden;
+    margin-bottom: 8px;
+  }
+  .progress-fill {
+    height: 100%;
+    border-radius: 4px;
+    transition: width 1s ease;
+  }
+  .progress-label {
+    font-size: 11px;
+    color: var(--text-muted);
+  }
+
+  /* Communication Flow */
+  .comm-flow {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 28px;
+    overflow-x: auto;
+  }
+  .flow-sequence {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    justify-content: center;
+    flex-wrap: wrap;
+    min-width: 600px;
+  }
+  .flow-node {
+    padding: 12px 18px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    text-align: center;
+    border: 1px solid;
+    min-width: 100px;
+  }
+  .flow-arrow {
+    font-size: 16px;
+    color: var(--text-muted);
+    flex-shrink: 0;
+  }
+  .flow-label {
+    font-size: 9px;
+    color: var(--text-muted);
+    text-align: center;
+    margin-top: 2px;
+    white-space: nowrap;
+  }
+
+  /* Footer */
+  .footer {
+    text-align: center;
+    padding: 40px 20px;
+    border-top: 1px solid var(--border);
+    color: var(--text-muted);
+    font-size: 13px;
+  }
+  .footer a {
+    color: var(--accent-blue);
+    text-decoration: none;
+  }
+
+  @media (max-width: 640px) {
+    .hero { padding: 40px 20px; }
+    .hero-logo { font-size: 32px; }
+    .hero-stats { gap: 20px; }
+    .container { padding: 24px 16px; }
+    .feature-grid { grid-template-columns: 1fr; }
+    .shortcut-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<!-- Hero -->
+<header class="hero">
+  <div class="hero-content">
+    <div class="hero-logo">CodeLens</div>
+    <p class="hero-subtitle">轻量、快速、语义感知的 C++ 代码阅读器</p>
+    <span class="hero-version">v0.7.1 &middot; 开发完成度 85%</span>
+    <div class="hero-stats">
+      <div class="stat">
+        <div class="stat-value" style="color:var(--accent-green)">6<span style="font-size:20px">/6</span></div>
+        <div class="stat-label">核心功能</div>
+      </div>
+      <div class="stat">
+        <div class="stat-value" style="color:var(--accent-blue)">15</div>
+        <div class="stat-label">JSON-RPC 方法</div>
+      </div>
+      <div class="stat">
+        <div class="stat-value" style="color:var(--accent-purple)">8</div>
+        <div class="stat-label">开发阶段</div>
+      </div>
+      <div class="stat">
+        <div class="stat-value" style="color:var(--accent-orange)">10</div>
+        <div class="stat-label">优化项</div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<main class="container">
+
+  <!-- Architecture -->
+  <section class="section" id="architecture">
+    <div class="section-header">
+      <div class="section-icon" style="background:rgba(88,166,255,0.12);color:var(--accent-blue);">&#x1F3D7;</div>
+      <h2 class="section-title">系统架构</h2>
+    </div>
+    <div class="arch-diagram">
+      <div class="arch-layers">
+        <!-- Frontend -->
+        <div class="arch-layer layer-frontend">
+          <div class="arch-layer-title">Frontend Layer</div>
+          <div class="arch-boxes">
+            <div class="arch-box">Next.js<small>React + TypeScript</small></div>
+            <div class="arch-box">Monaco Editor<small>代码编辑 + 语义高亮</small></div>
+            <div class="arch-box">React Components<small>FileTree / Outline / Search</small></div>
+          </div>
+        </div>
+        <div class="arch-arrow">&#x25BC; <span>Tauri IPC (invoke)</span> &#x25B2;</div>
+        <!-- Tauri -->
+        <div class="arch-layer layer-tauri">
+          <div class="arch-layer-title">Tauri Bridge Layer</div>
+          <div class="arch-boxes">
+            <div class="arch-box">lib.rs<small>12 IPC Commands</small></div>
+            <div class="arch-box">Sidecar Manager<small>常驻进程 + 管道复用</small></div>
+            <div class="arch-box">Tauri Plugins<small>Dialog + Opener</small></div>
+          </div>
+        </div>
+        <div class="arch-arrow">&#x25BC; <span>JSON-RPC 2.0 (stdio)</span> &#x25B2;</div>
+        <!-- Sidecar -->
+        <div class="arch-layer layer-sidecar">
+          <div class="arch-layer-title">C++ Sidecar Layer</div>
+          <div class="arch-boxes">
+            <div class="arch-box">Tree-sitter<small>增量语法解析</small></div>
+            <div class="arch-box">SymbolService<small>13 种符号类型</small></div>
+            <div class="arch-box">ParserService<small>LRU 语法树缓存</small></div>
+            <div class="arch-box">IndexService<small>项目符号索引</small></div>
+          </div>
+        </div>
+        <div class="arch-arrow">&#x25BC; <span>File I/O</span> &#x25B2;</div>
+        <!-- Data -->
+        <div class="arch-layer layer-data">
+          <div class="arch-layer-title">Data Layer</div>
+          <div class="arch-boxes">
+            <div class="arch-box">Source Files<small>.cpp / .h / .c / .hpp</small></div>
+            <div class="arch-box">SQLite<small>符号索引持久化（计划中）</small></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Communication Flow -->
+  <section class="section" id="comm-flow">
+    <div class="section-header">
+      <div class="section-icon" style="background:rgba(188,140,255,0.12);color:var(--accent-purple);">&#x1F517;</div>
+      <h2 class="section-title">通信流程</h2>
+    </div>
+    <div class="comm-flow">
+      <div class="flow-sequence">
+        <div class="flow-node" style="background:rgba(88,166,255,0.12);border-color:rgba(88,166,255,0.3);color:var(--accent-blue);">
+          Moncao Editor<br><small style="opacity:0.7">Provider API</small>
+        </div>
+        <div class="flow-arrow">&#x27A1;</div>
+        <div class="flow-node" style="background:rgba(88,166,255,0.08);border-color:rgba(88,166,255,0.2);color:var(--accent-blue);">
+          React 组件
+        </div>
+        <div class="flow-arrow">&#x27A1;</div>
+        <div class="flow-node" style="background:rgba(63,185,80,0.12);border-color:rgba(63,185,80,0.3);color:var(--accent-green);">
+          Tauri IPC<br><small style="opacity:0.7">invoke()</small>
+        </div>
+        <div class="flow-arrow">&#x27A1;</div>
+        <div class="flow-node" style="background:rgba(63,185,80,0.08);border-color:rgba(63,185,80,0.2);color:var(--accent-green);">
+          Rust lib.rs
+        </div>
+        <div class="flow-arrow">&#x27A1;</div>
+        <div class="flow-node" style="background:rgba(188,140,255,0.12);border-color:rgba(188,140,255,0.3);color:var(--accent-purple);">
+          JSON-RPC<br><small style="opacity:0.7">stdin / stdout</small>
+        </div>
+        <div class="flow-arrow">&#x27A1;</div>
+        <div class="flow-node" style="background:rgba(188,140,255,0.08);border-color:rgba(188,140,255,0.2);color:var(--accent-purple);">
+          C++ Sidecar
+        </div>
+      </div>
+      <div style="margin-top:20px;display:flex;gap:20px;justify-content:center;flex-wrap:wrap;">
+        <div style="text-align:center;">
+          <div class="proto-tag">Content-Length</div>
+          <div class="flow-label">消息分帧协议</div>
+        </div>
+        <div style="text-align:center;">
+          <div class="proto-tag">JSON-RPC 2.0</div>
+          <div class="flow-label">请求/响应格式</div>
+        </div>
+        <div style="text-align:center;">
+          <div class="proto-tag">Window Bridge</div>
+          <div class="flow-label">__MONACO_EDITOR__ / __CODELENS_GOTO_DEF__</div>
+        </div>
+        <div style="text-align:center;">
+          <div class="proto-tag">Mutex&lt;SidecarProcess&gt;</div>
+          <div class="flow-label">线程安全常驻进程</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Feature Status -->
+  <section class="section" id="features">
+    <div class="section-header">
+      <div class="section-icon" style="background:rgba(63,185,80,0.12);color:var(--accent-green);">&#x2611;</div>
+      <h2 class="section-title">功能完成状态</h2>
+    </div>
+
+    <!-- Overall Progress -->
+    <div class="progress-section">
+      <div class="progress-header">
+        <span class="progress-title">整体开发进度</span>
+        <span class="progress-pct">85%</span>
+      </div>
+      <div class="progress-bar">
+        <div class="progress-fill" style="width:85%;background:linear-gradient(90deg,var(--accent-blue),var(--accent-green));"></div>
+      </div>
+      <div class="progress-label">阶段1-5已完成 &middot; 运行时优化已完成 &middot; 阶段6（测试）部分完成 &middot; 阶段7（发布）待启动</div>
+    </div>
+
+    <div class="feature-grid">
+      <div class="feature-card">
+        <div class="feature-header">
+          <span class="feature-id">F-001</span>
+          <span class="feature-priority priority-p0">P0</span>
+        </div>
+        <div class="feature-name">代码高亮</div>
+        <div class="feature-desc">Tree-sitter 语义高亮叠加 Monaco Decorations，覆盖 20+ 语法作用域。降级策略：Sidecar 不可用时自动切换 Monarch tokenizer。</div>
+        <div class="feature-status status-done">
+          <span class="status-dot"></span>已完成 &middot; 阶段2
+        </div>
+      </div>
+      <div class="feature-card">
+        <div class="feature-header">
+          <span class="feature-id">F-002</span>
+          <span class="feature-priority priority-p0">P0</span>
+        </div>
+        <div class="feature-name">符号跳转 (Go to Definition)</div>
+        <div class="feature-desc">F12 / Ctrl+Click 跳转定义，支持同文件和跨文件导航。通过 Window Bridge 回调实现跨文件跳转。</div>
+        <div class="feature-status status-done">
+          <span class="status-dot"></span>已完成 &middot; 阶段3 + v0.7.1 修复
+        </div>
+      </div>
+      <div class="feature-card">
+        <div class="feature-header">
+          <span class="feature-id">F-003</span>
+          <span class="feature-priority priority-p0">P0</span>
+        </div>
+        <div class="feature-name">引用查找 (Find References)</div>
+        <div class="feature-desc">Shift+F12 查找符号所有引用，按文件分组显示，DEF 标记定义位置，展示上下文代码。</div>
+        <div class="feature-status status-done">
+          <span class="status-dot"></span>已完成 &middot; 阶段3
+        </div>
+      </div>
+      <div class="feature-card">
+        <div class="feature-header">
+          <span class="feature-id">F-004</span>
+          <span class="feature-priority priority-p1">P1</span>
+        </div>
+        <div class="feature-name">符号大纲 (Document Outline)</div>
+        <div class="feature-desc">嵌套树结构渲染，13 种符号类型图标/颜色区分，展开折叠，点击跳转到对应行。</div>
+        <div class="feature-status status-done">
+          <span class="status-dot"></span>已完成 &middot; 阶段4 + v0.7.1 修复
+        </div>
+      </div>
+      <div class="feature-card">
+        <div class="feature-header">
+          <span class="feature-id">F-005</span>
+          <span class="feature-priority priority-p1">P1</span>
+        </div>
+        <div class="feature-name">项目符号索引 (Symbol Search)</div>
+        <div class="feature-desc">前缀匹配 + 子串匹配双策略搜索，大小写不敏感，支持键盘导航，200ms 防抖。</div>
+        <div class="feature-status status-done">
+          <span class="status-dot"></span>已完成 &middot; 阶段4
+        </div>
+      </div>
+      <div class="feature-card">
+        <div class="feature-header">
+          <span class="feature-id">F-006</span>
+          <span class="feature-priority priority-p0">P0</span>
+        </div>
+        <div class="feature-name">文件树浏览器</div>
+        <div class="feature-desc">搜索过滤、右键菜单、15+ 文件类型图标、目录排序、符号链接过滤、拖拽分割面板。</div>
+        <div class="feature-status status-done">
+          <span class="status-dot"></span>已完成 &middot; 阶段5
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Tech Stack -->
+  <section class="section" id="tech-stack">
+    <div class="section-header">
+      <div class="section-icon" style="background:rgba(210,153,34,0.12);color:var(--accent-orange);">&#x1F528;</div>
+      <h2 class="section-title">技术栈</h2>
+    </div>
+    <div class="tech-grid">
+      <div class="tech-card">
+        <span class="tech-icon">&#x1F427;</span>
+        <div class="tech-name">Tauri 2.0</div>
+        <div class="tech-role">桌面框架</div>
+        <div class="tech-ver">Rust &middot; WebView2</div>
+      </div>
+      <div class="tech-card">
+        <span class="tech-icon">&#x269B;</span>
+        <div class="tech-name">Next.js 14</div>
+        <div class="tech-role">前端框架</div>
+        <div class="tech-ver">静态导出模式</div>
+      </div>
+      <div class="tech-card">
+        <span class="tech-icon">&#x1F4DD;</span>
+        <div class="tech-name">Monaco Editor</div>
+        <div class="tech-role">代码编辑器</div>
+        <div class="tech-ver">@monaco-editor/react</div>
+      </div>
+      <div class="tech-card">
+        <span class="tech-icon">&#x1F9E0;</span>
+        <div class="tech-name">Tree-sitter</div>
+        <div class="tech-role">语法解析</div>
+        <div class="tech-ver">C API v0.20.8</div>
+      </div>
+      <div class="tech-card">
+        <span class="tech-icon">&#x2699;</span>
+        <div class="tech-name">C++20</div>
+        <div class="tech-role">Sidecar 核心</div>
+        <div class="tech-ver">CMake + MSVC</div>
+      </div>
+      <div class="tech-card">
+        <span class="tech-icon">&#x1F4C3;</span>
+        <div class="tech-name">SQLite</div>
+        <div class="tech-role">数据存储</div>
+        <div class="tech-ver">索引持久化（计划中）</div>
+      </div>
+      <div class="tech-card">
+        <span class="tech-icon">&#x1F4E8;</span>
+        <div class="tech-name">JSON-RPC 2.0</div>
+        <div class="tech-role">通信协议</div>
+        <div class="tech-ver">Content-Length 分帧</div>
+      </div>
+      <div class="tech-card">
+        <span class="tech-icon">&#x1F9EA;</span>
+        <div class="tech-name">Google Test</div>
+        <div class="tech-role">C++ 单元测试</div>
+        <div class="tech-ver">17 测试用例</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Development Timeline -->
+  <section class="section" id="timeline">
+    <div class="section-header">
+      <div class="section-icon" style="background:rgba(57,210,192,0.12);color:var(--accent-cyan);">&#x1F4C5;</div>
+      <h2 class="section-title">开发时间线</h2>
+    </div>
+    <div class="timeline">
+      <div class="timeline-item">
+        <div class="timeline-dot"></div>
+        <div class="timeline-meta">
+          <span class="timeline-version">v0.1.0</span>
+          <span class="timeline-date">2026-04-27</span>
+          <span class="timeline-tag tag-phase">阶段1</span>
+        </div>
+        <div class="timeline-title">项目脚手架搭建</div>
+        <div class="timeline-desc">Tauri 2.0 + Next.js + C++ Sidecar 骨架，93 文件 / 15162 行，Git 仓库初始化 + main/develop 分支。</div>
+        <div class="timeline-details">
+          <span class="detail-chip">Rust 1.95.0</span>
+          <span class="detail-chip">Node.js v24.13.0</span>
+          <span class="detail-chip">3 IPC Commands</span>
+          <span class="detail-chip">JSON-RPC 协议</span>
+        </div>
+      </div>
+      <div class="timeline-item">
+        <div class="timeline-dot"></div>
+        <div class="timeline-meta">
+          <span class="timeline-version">v0.1.0-alpha</span>
+          <span class="timeline-date">2026-04-27</span>
+          <span class="timeline-tag tag-phase">阶段2</span>
+        </div>
+        <div class="timeline-title">核心解析 &mdash; Tree-sitter 语义高亮</div>
+        <div class="timeline-desc">集成 Tree-sitter C API，实现 ParserService（全量解析/增量更新/LRU 缓存），20+ 语法作用域映射，10 个 GTest 用例。</div>
+        <div class="timeline-details">
+          <span class="detail-chip">F-001 代码高亮</span>
+          <span class="detail-chip">6 JSON-RPC 方法</span>
+          <span class="detail-chip">3 IPC Commands</span>
+          <span class="detail-chip">10 GTest</span>
+        </div>
+      </div>
+      <div class="timeline-item">
+        <div class="timeline-dot"></div>
+        <div class="timeline-meta">
+          <span class="timeline-version">v0.2.0-alpha</span>
+          <span class="timeline-date">2026-04-27</span>
+          <span class="timeline-tag tag-phase">阶段3</span>
+        </div>
+        <div class="timeline-title">符号提取 &mdash; 定义跳转 & 引用查找</div>
+        <div class="timeline-desc">SymbolService ~600 行 C++，13 种符号类型提取，定义查找 + 引用查找 + 项目索引，Monaco DefinitionProvider + ReferenceProvider。</div>
+        <div class="timeline-details">
+          <span class="detail-chip">F-002 符号跳转</span>
+          <span class="detail-chip">F-003 引用查找</span>
+          <span class="detail-chip">4 JSON-RPC</span>
+          <span class="detail-chip">4 IPC</span>
+          <span class="detail-chip">7 GTest</span>
+        </div>
+      </div>
+      <div class="timeline-item">
+        <div class="timeline-dot"></div>
+        <div class="timeline-meta">
+          <span class="timeline-version">v0.4.0</span>
+          <span class="timeline-date">2026-04-29</span>
+          <span class="timeline-tag tag-phase">阶段4</span>
+        </div>
+        <div class="timeline-title">索引与搜索 &mdash; 符号大纲 & 符号搜索</div>
+        <div class="timeline-desc">textDocument/outline（嵌套树 + 栈算法）、symbol/search（前缀+子串双策略），SearchPanel 键盘导航，24 项 E2E 测试全部通过。</div>
+        <div class="timeline-details">
+          <span class="detail-chip">F-004 符号大纲</span>
+          <span class="detail-chip">F-005 符号搜索</span>
+          <span class="detail-chip">2 JSON-RPC</span>
+          <span class="detail-chip">24 E2E</span>
+        </div>
+      </div>
+      <div class="timeline-item">
+        <div class="timeline-dot"></div>
+        <div class="timeline-meta">
+          <span class="timeline-version">v0.5.0-beta</span>
+          <span class="timeline-date">2026-04-29</span>
+          <span class="timeline-tag tag-phase">阶段5</span>
+        </div>
+        <div class="timeline-title">UI 完善 &mdash; 文件树增强 + 主题切换</div>
+        <div class="timeline-desc">FileTree 重写（搜索/右键/图标排序）、ThemeProvider 深色/浅色、可拖拽分割面板、菜单栏功能化，零新增 npm 依赖。</div>
+        <div class="timeline-details">
+          <span class="detail-chip">F-006 文件树</span>
+          <span class="detail-chip">15+ 文件图标</span>
+          <span class="detail-chip">主题切换</span>
+          <span class="detail-chip">里程碑 M3</span>
+        </div>
+      </div>
+      <div class="timeline-item">
+        <div class="timeline-dot"></div>
+        <div class="timeline-meta">
+          <span class="timeline-version">v0.6.0-rc1</span>
+          <span class="timeline-date">2026-04-30</span>
+          <span class="timeline-tag tag-opt">优化</span>
+        </div>
+        <div class="timeline-title">运行时稳定性优化</div>
+        <div class="timeline-desc">Monaco 本地加载（离线可用）、Monarch Tokenizer 修复、Sidecar 打包到安装程序、窗口隐藏、全局快捷键修复、渲染性能优化（零 re-render）。</div>
+        <div class="timeline-details">
+          <span class="detail-chip">6 项修复</span>
+          <span class="detail-chip">Monaco 本地化</span>
+          <span class="detail-chip">React.memo</span>
+          <span class="detail-chip">useRef 优化</span>
+        </div>
+      </div>
+      <div class="timeline-item">
+        <div class="timeline-dot"></div>
+        <div class="timeline-meta">
+          <span class="timeline-version">v0.7.0</span>
+          <span class="timeline-date">2026-04-30</span>
+          <span class="timeline-tag tag-opt">优化</span>
+        </div>
+        <div class="timeline-title">Sidecar 常驻进程 + 高亮缓存</div>
+        <div class="timeline-desc">SidecarProcess 全局 Mutex 管理、管道复用 + 自动重启、FIFO 高亮缓存（200 条）、自动后台索引项目、Ctrl+O 修复。</div>
+        <div class="timeline-details">
+          <span class="detail-chip">OPT-007~010</span>
+          <span class="detail-chip">常驻进程</span>
+          <span class="detail-chip">FIFO 缓存</span>
+          <span class="detail-chip">懒启动</span>
+        </div>
+      </div>
+      <div class="timeline-item">
+        <div class="timeline-dot"></div>
+        <div class="timeline-meta">
+          <span class="timeline-version">v0.7.1</span>
+          <span class="timeline-date">2026-05-06</span>
+          <span class="timeline-tag tag-fix">修复</span>
+        </div>
+        <div class="timeline-title">导航 Bug 修复</div>
+        <div class="timeline-desc">BUG-001：window.__MONACO_EDITOR__ 未赋值导致大纲/搜索/引用跳转失效。BUG-002：定义 Provider URI 不匹配 + 跨文件导航通过 Window Bridge 回调实现。</div>
+        <div class="timeline-details">
+          <span class="detail-chip">BUG-001</span>
+          <span class="detail-chip">BUG-002</span>
+          <span class="detail-chip">model.uri</span>
+          <span class="detail-chip">Window Bridge</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Shortcuts -->
+  <section class="section" id="shortcuts">
+    <div class="section-header">
+      <div class="section-icon" style="background:rgba(247,120,186,0.12);color:var(--accent-pink);">&#x2328;</div>
+      <h2 class="section-title">快捷键</h2>
+    </div>
+    <div class="shortcut-grid">
+      <div class="shortcut-item">
+        <span class="shortcut-label">打开文件</span>
+        <div class="shortcut-keys"><span class="key">Ctrl</span><span class="key">O</span></div>
+      </div>
+      <div class="shortcut-item">
+        <span class="shortcut-label">跳转到定义</span>
+        <div class="shortcut-keys"><span class="key">F12</span></div>
+      </div>
+      <div class="shortcut-item">
+        <span class="shortcut-label">跳转到定义（鼠标）</span>
+        <div class="shortcut-keys"><span class="key">Ctrl</span><span class="key">Click</span></div>
+      </div>
+      <div class="shortcut-item">
+        <span class="shortcut-label">查找引用</span>
+        <div class="shortcut-keys"><span class="key">Shift</span><span class="key">F12</span></div>
+      </div>
+      <div class="shortcut-item">
+        <span class="shortcut-label">符号搜索</span>
+        <div class="shortcut-keys"><span class="key">Ctrl</span><span class="key">Shift</span><span class="key">F</span></div>
+      </div>
+      <div class="shortcut-item">
+        <span class="shortcut-label">切换主题</span>
+        <div class="shortcut-keys"><span class="key">Ctrl</span><span class="key">K</span><span class="key">Ctrl</span><span class="key">T</span></div>
+      </div>
+      <div class="shortcut-item">
+        <span class="shortcut-label">关闭面板</span>
+        <div class="shortcut-keys"><span class="key">Esc</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- JSON-RPC Methods -->
+  <section class="section" id="rpc-methods">
+    <div class="section-header">
+      <div class="section-icon" style="background:rgba(57,210,192,0.12);color:var(--accent-cyan);">&#x1F504;</div>
+      <h2 class="section-title">JSON-RPC 方法清单</h2>
+    </div>
+    <div class="rpc-table-wrap">
+      <table class="rpc-table">
+        <thead>
+          <tr>
+            <th>方法</th>
+            <th>阶段</th>
+            <th>描述</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="rpc-method">initialize</span></td>
+            <td><span class="rpc-phase rpc-phase-1">阶段1</span></td>
+            <td>初始化握手，返回服务端能力</td>
+          </tr>
+          <tr>
+            <td><span class="rpc-method">shutdown</span></td>
+            <td><span class="rpc-phase rpc-phase-1">阶段1</span></td>
+            <td>关闭服务，释放资源</td>
+          </tr>
+          <tr>
+            <td><span class="rpc-method">ping</span></td>
+            <td><span class="rpc-phase rpc-phase-1">阶段1</span></td>
+            <td>心跳检测</td>
+          </tr>
+          <tr>
+            <td><span class="rpc-method">parser/listLanguages</span></td>
+            <td><span class="rpc-phase rpc-phase-2">阶段2</span></td>
+            <td>获取支持的语言列表</td>
+          </tr>
+          <tr>
+            <td><span class="rpc-method">parser/parse</span></td>
+            <td><span class="rpc-phase rpc-phase-2">阶段2</span></td>
+            <td>全量解析文件</td>
+          </tr>
+          <tr>
+            <td><span class="rpc-method">parser/parseContent</span></td>
+            <td><span class="rpc-phase rpc-phase-2">阶段2</span></td>
+            <td>解析内存中的字符串</td>
+          </tr>
+          <tr>
+            <td><span class="rpc-method">parser/update</span></td>
+            <td><span class="rpc-phase rpc-phase-2">阶段2</span></td>
+            <td>增量更新解析</td>
+          </tr>
+          <tr>
+            <td><span class="rpc-method">parser/dispose</span></td>
+            <td><span class="rpc-phase rpc-phase-2">阶段2</span></td>
+            <td>释放语法树缓存</td>
+          </tr>
+          <tr>
+            <td><span class="rpc-method">textDocument/highlight</span></td>
+            <td><span class="rpc-phase rpc-phase-2">阶段2</span></td>
+            <td>获取语义高亮数据</td>
+          </tr>
+          <tr>
+            <td><span class="rpc-method">textDocument/definition</span></td>
+            <td><span class="rpc-phase rpc-phase-3">阶段3</span></td>
+            <td>符号跳转 (Go to Definition)</td>
+          </tr>
+          <tr>
+            <td><span class="rpc-method">textDocument/references</span></td>
+            <td><span class="rpc-phase rpc-phase-3">阶段3</span></td>
+            <td>引用查找 (Find References)</td>
+          </tr>
+          <tr>
+            <td><span class="rpc-method">symbol/index</span></td>
+            <td><span class="rpc-phase rpc-phase-3">阶段3</span></td>
+            <td>构建项目符号索引</td>
+          </tr>
+          <tr>
+            <td><span class="rpc-method">symbol/extract</span></td>
+            <td><span class="rpc-phase rpc-phase-3">阶段3</span></td>
+            <td>提取单文件符号列表</td>
+          </tr>
+          <tr>
+            <td><span class="rpc-method">textDocument/outline</span></td>
+            <td><span class="rpc-phase rpc-phase-4">阶段4</span></td>
+            <td>文档符号大纲（嵌套树结构）</td>
+          </tr>
+          <tr>
+            <td><span class="rpc-method">symbol/search</span></td>
+            <td><span class="rpc-phase rpc-phase-4">阶段4</span></td>
+            <td>项目符号搜索（前缀+子串匹配）</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- Optimization Summary -->
+  <section class="section" id="optimizations">
+    <div class="section-header">
+      <div class="section-icon" style="background:rgba(227,179,65,0.12);color:var(--accent-yellow);">&#x26A1;</div>
+      <h2 class="section-title">优化记录总览</h2>
+    </div>
+    <div class="progress-section" style="margin-bottom:12px;">
+      <div class="progress-header">
+        <span class="progress-title">v0.6.0 运行时稳定性</span>
+        <span class="progress-pct" style="color:var(--accent-orange)">6 项修复</span>
+      </div>
+      <div class="progress-bar">
+        <div class="progress-fill" style="width:100%;background:var(--accent-orange);"></div>
+      </div>
+      <div class="progress-label">Monaco 本地化 &middot; Tokenizer 修复 &middot; Sidecar 打包 &middot; 窗口隐藏 &middot; 快捷键修复 &middot; 渲染性能</div>
+    </div>
+    <div class="progress-section" style="margin-bottom:12px;">
+      <div class="progress-header">
+        <span class="progress-title">v0.7.0 常驻进程 + 缓存</span>
+        <span class="progress-pct" style="color:var(--accent-purple)">4 项优化</span>
+      </div>
+      <div class="progress-bar">
+        <div class="progress-fill" style="width:100%;background:var(--accent-purple);"></div>
+      </div>
+      <div class="progress-label">OPT-007 常驻进程 &middot; OPT-008 高亮缓存 &middot; OPT-009 跨文件引用 &middot; OPT-010 Ctrl+O 修复</div>
+    </div>
+    <div class="progress-section">
+      <div class="progress-header">
+        <span class="progress-title">v0.7.1 导航修复</span>
+        <span class="progress-pct" style="color:var(--accent-pink)">2 项修复</span>
+      </div>
+      <div class="progress-bar">
+        <div class="progress-fill" style="width:100%;background:var(--accent-pink);"></div>
+      </div>
+      <div class="progress-label">BUG-001 __MONACO_EDITOR__ 未赋值 &middot; BUG-002 定义 Provider URI 不匹配</div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="footer">
+  <p>CodeLens 代码阅读器 &middot; Tauri 2.0 + Next.js + C++20 Sidecar + Tree-sitter + Monaco Editor</p>
+  <p style="margin-top:6px;">技术栈选型详见 <a href="#">REQUIREMENTS.md</a> &middot; 优化详情见 <a href="#">docs/OPTIMIZATION.md</a></p>
+</footer>
+
+</body>
+</html>
