@@ -117,6 +117,7 @@ cmake --build build --config Release
 cd src-tauri
 cargo tauri dev
 ```
+演示链接：本地主机在执行`cargo tauri dev`后访问`http://localhost:3000`
 
 ### 构建发布
 
