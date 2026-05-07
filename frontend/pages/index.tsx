@@ -174,8 +174,8 @@ export default function Home() {
     setSearchQuery('');
   }, [handleGoToDefinition]);
 
-  // 触发引用查找
-  const triggerFindReferences = useCallback(async () => {
+  // 触发引用查找（支持外部传入 symbolName，也可从光标位置自动获取）
+  const triggerFindReferences = useCallback(async (externalSymbolName?: string) => {
     if (!currentFile) return;
 
     setRefsLoading(true);
@@ -184,15 +184,18 @@ export default function Home() {
     try {
       const { invoke } = await import('@tauri-apps/api/core');
 
-      const model = (window as any).__MONACO_EDITOR__?.getModel();
-      let symbolName = '';
+      let symbolName = externalSymbolName || '';
 
-      if (model) {
-        const word = model.getWordAtPosition({
-          lineNumber: cursorPosRef.current.line,
-          column: cursorPosRef.current.col,
-        });
-        symbolName = word?.word || '';
+      // 如果没有外部传入，从光标位置获取
+      if (!symbolName) {
+        const model = (window as any).__MONACO_EDITOR__?.getModel();
+        if (model) {
+          const word = model.getWordAtPosition({
+            lineNumber: cursorPosRef.current.line,
+            column: cursorPosRef.current.col,
+          });
+          symbolName = word?.word || '';
+        }
       }
 
       if (!symbolName) return;
@@ -522,7 +525,7 @@ export default function Home() {
               language={language}
               onCursorMove={handleCursorMove}
               onGoToDefinition={handleGoToDefinition}
-              onFindReferences={() => triggerFindReferences()}
+              onFindReferences={(symbolName: string) => triggerFindReferences(symbolName)}
             />
 
             {/* 引用面板（浮动） */}
@@ -596,10 +599,10 @@ export default function Home() {
           <span
             className="status-item"
             style={{ cursor: 'pointer' }}
-            onClick={triggerFindReferences}
+            onClick={() => triggerFindReferences()}
             title="Shift+F12 查找引用"
           >
-            CodeLens v0.7.1
+            CodeLens v0.7.2
           </span>
         </footer>
       </div>

@@ -295,6 +295,12 @@ cargo tauri build
 - **Go to Definition 修复**（BUG-002）：重写定义 Provider，同文件定义使用 `model.uri` 确保 URI 匹配，跨文件定义通过回调打开目标文件
 - 优化文档：`docs/OPTIMIZATION.md` 升级至 v2.1
 
+### Bug 修复 v0.7.2 ✅
+
+**提交**：`fix/f003-references-panel` 分支
+**内容**：
+- **引用面板显示为空修复**（BUG-003）：重写引用 Provider，通过 `window.__CODELENS_FIND_REFS__` 回调触发自定义 ReferencesPanel，阻止 Monaco 内置 Peek References（缺少 content provider）显示空内容
+
 ## JSON-RPC 方法清单
 
 ### 已实现

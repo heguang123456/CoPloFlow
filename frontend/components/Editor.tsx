@@ -16,6 +16,8 @@ declare global {
   interface Window {
     __CODELENS_CURRENT_FILE__?: string;
     __MONACO_EDITOR__?: any;
+    __CODELENS_GOTO_DEF__?: (targetFilePath: string, line: number, col: number) => void;
+    __CODELENS_FIND_REFS__?: (symbolName: string, line: number, col: number) => void;
   }
 }
 
@@ -218,30 +220,23 @@ function registerCodelensLanguage(monaco: any) {
   });
 
   // 注册引用 Provider（Shift+F12）
+  // Monaco standalone 缺少 content provider，无法通过 file:// URI 加载文件内容，
+  // 因此不返回引用位置列表，而是通过回调触发自定义 ReferencesPanel 显示
   monaco.languages.registerReferenceProvider('codelens-cpp', {
-    provideReferences: async (model: any, position: any) => {
+    provideReferences: async (_model: any, position: any) => {
       try {
-        const { invoke } = await import('@tauri-apps/api/core');
-        const word = model.getWordAtPosition(position);
+        const word = _model.getWordAtPosition(position);
         const symbolName = word?.word || '';
-
         if (!symbolName) return [];
 
-        const result = await invoke<any>('sidecar_find_references', {
-          symbolName: symbolName,
-        });
-
-        if (result && result.success && Array.isArray(result.references)) {
-          return result.references.map((ref: any) => ({
-            uri: monaco.Uri.file(ref.filePath),
-            range: new monaco.Range(
-              ref.startLine + 1,
-              ref.startCol + 1,
-              ref.endLine + 1,
-              ref.endCol + 1,
-            ),
-          }));
+        // 通过回调触发自定义 ReferencesPanel
+        const findRefs = (window as any).__CODELENS_FIND_REFS__;
+        if (findRefs) {
+          findRefs(symbolName, position.lineNumber, position.column);
         }
+
+        // 返回空数组，阻止 Monaco 内置 Peek References 打开（它无法加载文件）
+        return [];
       } catch (err) {
         console.log('[CodeLens] Reference provider error:', err);
       }
@@ -323,6 +318,13 @@ export default memo(function CodeEditorView({
       (window as any).__CODELENS_GOTO_DEF__ = onGoToDefinition || null;
     }
   }, [onGoToDefinition]);
+
+  // 将引用查找回调同步到 window，供引用 Provider 使用
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      (window as any).__CODELENS_FIND_REFS__ = onFindReferences || null;
+    }
+  }, [onFindReferences]);
 
   const applySemanticHighlight = useCallback(async (
     editor: any,

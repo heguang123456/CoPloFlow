@@ -5,6 +5,24 @@
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
+## [0.7.2] - 2026-05-07
+
+### 修复 (Fixed)
+
+#### 前端 - 引用面板显示为空（F-003）
+- `Editor.tsx` 引用 Provider（`registerReferenceProvider`）重写：
+  - **根因**：Monaco 内置 ReferenceProvider 返回 `monaco.Uri.file(ref.filePath)` 构建 `file://` URI，Monaco standalone 缺少 content provider 无法加载文件内容，导致 Peek References 面板显示为空
+  - **修复**：ReferenceProvider 改为通过 `window.__CODELENS_FIND_REFS__` 回调触发自定义 ReferencesPanel，不再返回引用位置列表，阻止 Monaco 内置 Peek References 打开
+- `Editor.tsx` 新增 `useEffect` 同步 `onFindReferences` 回调到 `window.__CODELENS_FIND_REFS__`
+- `Editor.tsx` 扩展 Window 类型声明，新增 `__CODELENS_FIND_REFS__` 类型
+- `index.tsx` `triggerFindReferences` 支持外部传入 `symbolName` 参数（Window Bridge 回调场景）
+- `index.tsx` Editor 组件 `onFindReferences` prop 更新为传递 `symbolName`
+
+### 根因分析
+- **Monaco standalone 无 content provider**：与 Go to Definition 跨文件导航相同的问题，Monaco standalone 不具备 VS Code 级别的文件系统集成，无法通过 `file://` URI 自动加载文件内容
+- **Peek References 依赖 content provider**：Monaco 内置的 Peek References UI 需要读取引用所在文件的源代码来显示上下文预览，缺少 content provider 时面板内容为空
+- **修复策略**：沿用 v0.7.1 的 Window Bridge 架构模式，将跨文件引用查找从 Monaco 内置 UI 重定向到应用层的自定义 ReferencesPanel（已有正确的 contextLine 显示逻辑）
+
 ## [0.7.1] - 2026-05-06
 
 ### 修复 (Fixed)
