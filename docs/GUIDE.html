@@ -641,7 +641,7 @@
   <div class="hero-content">
     <div class="hero-logo">CodeLens</div>
     <p class="hero-subtitle">轻量、快速、语义感知的 C++ 代码阅读器</p>
-    <span class="hero-version">v0.7.1 &middot; 开发完成度 85%</span>
+    <span class="hero-version">v0.7.2 &middot; 开发完成度 85%</span>
     <div class="hero-stats">
       <div class="stat">
         <div class="stat-value" style="color:var(--accent-green)">6<span style="font-size:20px">/6</span></div>
@@ -656,7 +656,7 @@
         <div class="stat-label">开发阶段</div>
       </div>
       <div class="stat">
-        <div class="stat-value" style="color:var(--accent-orange)">10</div>
+        <div class="stat-value" style="color:var(--accent-orange)">11</div>
         <div class="stat-label">优化项</div>
       </div>
     </div>
@@ -817,9 +817,9 @@
           <span class="feature-priority priority-p0">P0</span>
         </div>
         <div class="feature-name">引用查找 (Find References)</div>
-        <div class="feature-desc">Shift+F12 查找符号所有引用，按文件分组显示，DEF 标记定义位置，展示上下文代码。</div>
+        <div class="feature-desc">Shift+F12 查找符号所有引用，按文件分组显示，DEF 标记定义位置，展示上下文代码。通过 Window Bridge 回调触发自定义面板。</div>
         <div class="feature-status status-done">
-          <span class="status-dot"></span>已完成 &middot; 阶段3
+          <span class="status-dot"></span>已完成 &middot; 阶段3 + v0.7.2 修复
         </div>
       </div>
       <div class="feature-card">
@@ -1052,6 +1052,22 @@
           <span class="detail-chip">Window Bridge</span>
         </div>
       </div>
+      <div class="timeline-item">
+        <div class="timeline-dot" style="background:var(--accent-cyan);"></div>
+        <div class="timeline-meta">
+          <span class="timeline-version">v0.7.2</span>
+          <span class="timeline-date">2026-05-07</span>
+          <span class="timeline-tag tag-fix">修复</span>
+        </div>
+        <div class="timeline-title">引用面板显示为空修复</div>
+        <div class="timeline-desc">BUG-003：Monaco 内置 ReferenceProvider 返回 file:// URI，standalone 无 content provider 导致 Peek References 面板内容为空。重写为 Window Bridge 回调触发自定义 ReferencesPanel。</div>
+        <div class="timeline-details">
+          <span class="detail-chip">BUG-003</span>
+          <span class="detail-chip">F-003</span>
+          <span class="detail-chip">__CODELENS_FIND_REFS__</span>
+          <span class="detail-chip">ReferencesPanel</span>
+        </div>
+      </div>
     </div>
   </section>
 
@@ -1224,6 +1240,16 @@
         <div class="progress-fill" style="width:100%;background:var(--accent-pink);"></div>
       </div>
       <div class="progress-label">BUG-001 __MONACO_EDITOR__ 未赋值 &middot; BUG-002 定义 Provider URI 不匹配</div>
+    </div>
+    <div class="progress-section">
+      <div class="progress-header">
+        <span class="progress-title">v0.7.2 引用面板修复</span>
+        <span class="progress-pct" style="color:var(--accent-cyan)">1 项修复</span>
+      </div>
+      <div class="progress-bar">
+        <div class="progress-fill" style="width:100%;background:var(--accent-cyan);"></div>
+      </div>
+      <div class="progress-label">BUG-003 引用 Provider 无 content provider 导致 Peek References 面板内容为空</div>
     </div>
   </section>
 
