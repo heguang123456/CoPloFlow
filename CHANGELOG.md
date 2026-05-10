@@ -5,6 +5,17 @@
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
+## [0.7.3] - 2026-05-10
+
+### 修复 (Fixed)
+
+#### 前端 - Shift+F12 弹出两种引用面板（F-003）
+- `Editor.tsx` 注册自定义 `codelens-find-references` action，绑定 Shift+F12 keybinding：
+  - **根因**：v0.7.2 修复后，`registerReferenceProvider` 的 `provideReferences` 通过回调触发自定义 ReferencesPanel 并返回空数组，但 Monaco standalone 仍然会打开内置 Peek References Widget（显示 "No references found"），导致两种面板同时出现
+  - **修复**：注册同 keybinding 的自定义 action `codelens-find-references`，直接获取光标处 symbolName 并通过 Window Bridge 回调触发 ReferencesPanel，不经过 Monaco 的 provider 查询链路，从根源上阻止 Peek References Widget 弹出
+- `Editor.tsx` 覆盖 Monaco 内置 `editor.action.peekReferences`、`editor.action.goToReferences`、`references.action.show` 三个 action 的 `run` 方法为 async no-op，防止其他途径（如右键菜单、命令面板）触发内置 Peek References
+- 版本号更新：v0.7.2 → v0.7.3
+
 ## [0.7.2] - 2026-05-07
 
 ### 修复 (Fixed)

@@ -602,7 +602,7 @@ export default function Home() {
             onClick={() => triggerFindReferences()}
             title="Shift+F12 查找引用"
           >
-            CodeLens v0.7.2
+            CodeLens v0.7.3
           </span>
         </footer>
       </div>

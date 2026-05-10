@@ -295,6 +295,11 @@ cargo tauri build
 - **Go to Definition 修复**（BUG-002）：重写定义 Provider，同文件定义使用 `model.uri` 确保 URI 匹配，跨文件定义通过回调打开目标文件
 - 优化文档：`docs/OPTIMIZATION.md` 升级至 v2.1
 
+### Bug 修复 v0.7.3 ✅
+
+**内容**：
+- **Shift+F12 双面板问题修复**（BUG-004）：注册自定义 `codelens-find-references` action 覆盖 Shift+F12 keybinding，从根源阻止 Monaco 内置 Peek References Widget 弹出，仅显示自定义 ReferencesPanel
+
 ### Bug 修复 v0.7.2 ✅
 
 **提交**：`fix/f003-references-panel` 分支
