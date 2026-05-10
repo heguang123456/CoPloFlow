@@ -10,10 +10,12 @@
 ### 修复 (Fixed)
 
 #### 前端 - Shift+F12 弹出两种引用面板（F-003）
-- `Editor.tsx` 注册自定义 `codelens-find-references` action，绑定 Shift+F12 keybinding：
-  - **根因**：v0.7.2 修复后，`registerReferenceProvider` 的 `provideReferences` 通过回调触发自定义 ReferencesPanel 并返回空数组，但 Monaco standalone 仍然会打开内置 Peek References Widget（显示 "No references found"），导致两种面板同时出现
-  - **修复**：注册同 keybinding 的自定义 action `codelens-find-references`，直接获取光标处 symbolName 并通过 Window Bridge 回调触发 ReferencesPanel，不经过 Monaco 的 provider 查询链路，从根源上阻止 Peek References Widget 弹出
-- `Editor.tsx` 覆盖 Monaco 内置 `editor.action.peekReferences`、`editor.action.goToReferences`、`references.action.show` 三个 action 的 `run` 方法为 async no-op，防止其他途径（如右键菜单、命令面板）触发内置 Peek References
+- `Editor.tsx` 移除 `registerReferenceProvider`（v0.7.2 遗留）：
+  - 不再向 Monaco 注册引用 Provider，使 `EditorContextKeys.hasReferenceProvider` 为 `false`，Monaco 内置 `GoToReferencesAction` 因 precondition 不满足而自动禁用
+- `Editor.tsx` 在 `registerCodelensLanguage` 中通过 `monaco.editor.addCommand` 注册全局自定义命令 `codelens.findReferences`，绑定 `monaco.editor.addKeybindingRule(Shift+F12)`：
+  - **根因**：v0.7.3 首次修复中 `editor.addAction` 的 keybinding 优先级低于 Monaco 内置 keybinding（weight: 100），导致两者同时触发，内置 action 显示 "No references found" 蓝色提示条
+  - **修复**：使用全局级 `addCommand` + `addKeybindingRule` 完全接管 Shift+F12，不经过 Monaco provider 链路
+- `Editor.tsx` 覆盖 Monaco 内置 `editor.action.peekReferences`、`editor.action.goToReferences`、`editor.action.referenceSearch.trigger`、`references.action.show` 四个 action 的 `run` 方法为 async no-op
 - 版本号更新：v0.7.2 → v0.7.3
 
 ## [0.7.2] - 2026-05-07

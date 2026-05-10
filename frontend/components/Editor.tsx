@@ -219,30 +219,40 @@ function registerCodelensLanguage(monaco: any) {
     },
   });
 
-  // 注册引用 Provider（Shift+F12）
-  // Monaco standalone 缺少 content provider，无法通过 file:// URI 加载文件内容，
-  // 因此不返回引用位置列表，而是通过回调触发自定义 ReferencesPanel 显示。
-  // 同时需要彻底阻止 Monaco 内置的 Peek References Widget 弹出。
-  monaco.languages.registerReferenceProvider('codelens-cpp', {
-    provideReferences: async (_model: any, position: any) => {
-      try {
-        const word = _model.getWordAtPosition(position);
-        const symbolName = word?.word || '';
-        if (!symbolName) return [];
+  // 注意：不注册 registerReferenceProvider。
+  // Monaco standalone 的 Peek References Widget 无法通过 file:// URI 加载跨文件引用，
+  // 返回空数组仍会显示 "No references found" 蓝色提示条误导用户。
+  // 引用查找完全由全局 addCommand + keybinding 接管 + Window Bridge 回调处理。
 
-        // 通过回调触发自定义 ReferencesPanel
-        const findRefs = (window as any).__CODELENS_FIND_REFS__;
-        if (findRefs) {
-          findRefs(symbolName, position.lineNumber, position.column);
-        }
+  // 在 Monaco 全局注册自定义引用查找命令，绑定 Shift+F12
+  monaco.editor.addCommand({
+    id: 'codelens.findReferences',
+    handler: (_accessor: any, ...args: any[]) => {
+      // 从编辑器获取光标处的符号名
+      const editor = (window as any).__MONACO_EDITOR__;
+      if (!editor) return;
 
-        // 返回空数组，阻止 Monaco 内置 Peek References 打开（它无法加载文件）
-        return [];
-      } catch (err) {
-        console.log('[CodeLens] Reference provider error:', err);
+      const model = editor.getModel();
+      const position = editor.getPosition();
+      if (!model || !position) return;
+
+      const word = model.getWordAtPosition(position);
+      const symbolName = word?.word || '';
+      if (!symbolName) return;
+
+      // 通过 Window Bridge 回调触发自定义 ReferencesPanel
+      const findRefs = (window as any).__CODELENS_FIND_REFS__;
+      if (findRefs) {
+        findRefs(symbolName, position.lineNumber, position.column);
       }
-      return [];
     },
+  });
+
+  // 注册 keybinding 规则，将 Shift+F12 绑定到自定义命令
+  // weight 不设置时使用默认值，但通过 addKeybindingRule 后注册会覆盖先注册的同快捷键
+  monaco.editor.addKeybindingRule({
+    keybinding: monaco.KeyMod.Shift | monaco.KeyCode.F12,
+    command: 'codelens.findReferences',
   });
 }
 
@@ -477,38 +487,14 @@ export default memo(function CodeEditorView({
     // Ctrl+Click 跳转定义（Monaco 内置的 definition provider 已处理）
     // F12 跳转定义（Monaco 内置的 goToDefinition action 已处理）
 
-    // Shift+F12 查找引用 — 彻底阻止 Monaco 内置 Peek References Widget
-    // 问题：Monaco standalone 无法通过 file:// URI 加载跨文件引用，
-    // 内置 Peek References 会显示 "No references found" 误导用户。
-    // 方案：覆盖 Shift+F12 的 keybinding action，先手动调用 provider 获取 symbolName，
-    //       再通过 __CODELENS_FIND_REFS__ 回调触发自定义 ReferencesPanel，
-    //       然后阻止 Monaco 打开 Peek widget。
-    editor.addAction({
-      id: 'codelens-find-references',
-      label: 'CodeLens: Find All References',
-      keybindings: [monaco.KeyMod.Shift | monaco.KeyCode.F12],
-      run: (ed: any) => {
-        const model = ed.getModel();
-        const position = ed.getPosition();
-        if (!model || !position) return;
+    // Shift+F12 查找引用 — 已在 registerCodelensLanguage 中通过
+    // monaco.editor.addCommand + addKeybindingRule 全局接管，此处无需重复注册。
 
-        const word = model.getWordAtPosition(position);
-        const symbolName = word?.word || '';
-        if (!symbolName) return;
-
-        // 通过 Window Bridge 回调触发自定义 ReferencesPanel
-        const findRefs = (window as any).__CODELENS_FIND_REFS__;
-        if (findRefs) {
-          findRefs(symbolName, position.lineNumber, position.column);
-        }
-        // 不调用 Monaco 内置引用查找，阻止 Peek References Widget 弹出
-      },
-    });
-
-    // 同时覆盖 Monaco 内置的 Peek References 相关 action，防止其他途径触发
+    // 覆盖 Monaco 内置 action 为 no-op（兜底：防止命令面板等途径触发）
     const peekActionIds = [
       'editor.action.peekReferences',
       'editor.action.goToReferences',
+      'editor.action.referenceSearch.trigger',
       'references.action.show',
     ];
     for (const actionId of peekActionIds) {

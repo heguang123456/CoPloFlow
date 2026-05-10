@@ -298,7 +298,7 @@ cargo tauri build
 ### Bug 修复 v0.7.3 ✅
 
 **内容**：
-- **Shift+F12 双面板问题修复**（BUG-004）：注册自定义 `codelens-find-references` action 覆盖 Shift+F12 keybinding，从根源阻止 Monaco 内置 Peek References Widget 弹出，仅显示自定义 ReferencesPanel
+- **Shift+F12 双面板问题修复**（BUG-004）：移除 `registerReferenceProvider`，通过 `monaco.editor.addCommand` + `addKeybindingRule` 全局接管 Shift+F12，使 Monaco 内置 `GoToReferencesAction` 因 `hasReferenceProvider=false` precondition 自动禁用，从根源阻止 "No references found" 蓝色提示条
 
 ### Bug 修复 v0.7.2 ✅
 
