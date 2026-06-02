@@ -1,4 +1,4 @@
-# CodeLens 代码阅读器
+# CoPloFlow 代码阅读器
 
 > 轻量、快速、语义感知的 C++ 代码阅读器
 
@@ -13,7 +13,7 @@
 ## 项目结构
 
 ```
-CodeLens/
+CoPloFlow/
 ├── src-tauri/               # Tauri 后端（Rust）
 │   ├── Cargo.toml
 │   ├── tauri.conf.json
@@ -226,7 +226,7 @@ cargo tauri build
 - 主题切换：
   - 新增 `ThemeProvider.tsx`：React Context + localStorage 持久化
   - 浅色主题 15 个 CSS 变量（`[data-theme="light"]`）
-  - Monaco Editor `codelens-light` 浅色主题定义
+  - Monaco Editor `CoPloFlow-light` 浅色主题定义
   - Ctrl+K Ctrl+T 快捷键 + 状态栏主题切换按钮
   - 300ms 渐变过渡动画
 - 界面布局完善：
